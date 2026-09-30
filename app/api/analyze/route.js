@@ -219,6 +219,9 @@ export async function POST(req){
 
 export async function GET(req){
  const u=new URL(req.url);
+ if(u.searchParams.get('health')==='1'){
+  return NextResponse.json({ok:true,service:'aio-geo-audit',version:'health-v2',hasFirecrawlKey:Boolean(process.env.FIRECRAWL_API_KEY)});
+ }
  if(u.searchParams.get('debug')!=='1') return NextResponse.json({ok:true,service:'aio-geo-audit'});
  const target=u.searchParams.get('url')||'https://www.e-xpress.jp/';
  const result=await firecrawlFallback(target,true);
