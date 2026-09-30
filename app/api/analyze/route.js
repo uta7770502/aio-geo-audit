@@ -67,7 +67,7 @@ async function firecrawlFallback(target,debug=false){
     url:target,
     formats:['markdown']
    }),
-   signal:AbortSignal.timeout(18000),
+   signal:AbortSignal.timeout(8000),
    cache:'no-store'
   });
   const raw=await res.text();
@@ -169,7 +169,7 @@ export async function POST(req){
 
   stage='crawl';
   const queue=[start.href]; const seen=new Set(); const docs=[];
-  while(queue.length&&docs.length<5){
+  while(queue.length&&docs.length<3){
    const target=queue.shift();
    if(!target||seen.has(target))continue;
    seen.add(target);
@@ -177,7 +177,7 @@ export async function POST(req){
    if(!page)continue;
    docs.push(page);
    if(page.html){
-    for(const l of internalLinks(page.html,target)){if(queue.length<20&&!seen.has(l))queue.push(l)}
+    for(const l of internalLinks(page.html,target)){if(queue.length<8&&!seen.has(l))queue.push(l)}
    }
   }
   if(!docs.length){
