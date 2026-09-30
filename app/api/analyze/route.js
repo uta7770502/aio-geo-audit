@@ -188,10 +188,14 @@ export async function POST(req){
     for(const l of internalLinks(page.html,target)){if(queue.length<20&&!seen.has(l))queue.push(l)}
    }
   }
-  if(!docs.length)return NextResponse.json({
-   error:'ページを取得できませんでした。Firecrawlを含む5経路を試しましたが、すべて失敗しました。',
-   debug:{firecrawl:'failed',direct:'failed',allorigins:'failed',microlink:'failed',jina:'failed'}
-  },{status:422});
+  if(!docs.length){
+   const fcDebug=await firecrawlFallback(start.href,true);
+   const fcMsg=fcDebug?.error ? `Firecrawl: ${fcDebug.error}${fcDebug.detail?' / '+fcDebug.detail:''}` : 'Firecrawl: failed';
+   return NextResponse.json({
+    error:'ページを取得できませんでした。'+fcMsg,
+    debug:{hasFirecrawlKey:Boolean(process.env.FIRECRAWL_API_KEY),firecrawl:fcDebug||'failed',direct:'failed',allorigins:'failed',microlink:'failed',jina:'failed'}
+   },{status:422});
+  }
 
   stage='scoring';
   const keys=['entity','structure','schema','faq','trust','citation']; const categories={};
