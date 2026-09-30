@@ -75,6 +75,23 @@ async function allOriginsFallback(target){
   return {html,source:'allorigins'};
  }catch{return null}
 }
+
+async function microlinkFallback(target){
+ try{
+  const api='https://api.microlink.io/?url='+encodeURIComponent(target)+'&data.content.attr=markdown&meta=false';
+  const res=await fetch(api,{
+   headers:{'accept':'application/json','user-agent':'Mozilla/5.0'},
+   signal:AbortSignal.timeout(20000),
+   cache:'no-store'
+  });
+  if(!res.ok)return null;
+  const json=await res.json();
+  const text=json?.data?.content;
+  if(typeof text!=='string'||text.trim().length<100)return null;
+  return {text,source:'microlink'};
+ }catch{return null}
+}
+
 async function readerFallback(target){
  try{
   const parsed=new URL(target);
@@ -97,6 +114,11 @@ async function fetchPage(target){
  if(proxied){
   const text=cleanText(proxied.html).slice(0,30000);
   return {url:target,html:proxied.html,text,fallback:true,source:proxied.source,score:scorePage(proxied.html,text,true)};
+ }
+ const micro=await microlinkFallback(target);
+ if(micro){
+  const text=micro.text.slice(0,30000);
+  return {url:target,html:'',text,fallback:true,source:micro.source,score:scorePage('',text,true)};
  }
  const fb=await readerFallback(target);
  if(fb){
@@ -134,8 +156,8 @@ export async function POST(req){
    }
   }
   if(!docs.length)return NextResponse.json({
-   error:'ページを取得できませんでした。取得経路を3通り試しましたが、すべて失敗しました。',
-   debug:{direct:'failed',allorigins:'failed',jina:'failed'}
+   error:'ページを取得できませんでした。取得経路を4通り試しましたが、すべて失敗しました。',
+   debug:{direct:'failed',allorigins:'failed',microlink:'failed',jina:'failed'}
   },{status:422});
 
   stage='scoring';
