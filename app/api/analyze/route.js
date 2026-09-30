@@ -58,10 +58,7 @@ async function firecrawlFallback(target,debug=false){
    headers,
    body:JSON.stringify({
     url:target,
-    formats:['markdown'],
-    onlyMainContent:true,
-    maxAge:86400000,
-    timeout:45000
+    formats:['markdown']
    }),
    signal:AbortSignal.timeout(55000),
    cache:'no-store'
