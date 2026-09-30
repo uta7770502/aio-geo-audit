@@ -48,6 +48,29 @@ function internalLinks(html,base){
  }
  return [...new Set(out)];
 }
+
+async function firecrawlFallback(target){
+ try{
+  const res=await fetch('https://api.firecrawl.dev/v2/scrape',{
+   method:'POST',
+   headers:{'content-type':'application/json','accept':'application/json'},
+   body:JSON.stringify({
+    url:target,
+    formats:['markdown'],
+    onlyMainContent:false,
+    proxy:'auto'
+   }),
+   signal:AbortSignal.timeout(30000),
+   cache:'no-store'
+  });
+  if(!res.ok)return null;
+  const json=await res.json();
+  const text=json?.data?.markdown || json?.markdown || '';
+  if(typeof text!=='string'||text.trim().length<100)return null;
+  return {text,source:'firecrawl'};
+ }catch{return null}
+}
+
 async function directFetch(target){
  try{
   const res=await fetch(target,{
@@ -105,6 +128,11 @@ async function readerFallback(target){
  }catch{return null}
 }
 async function fetchPage(target){
+ const fc=await firecrawlFallback(target);
+ if(fc){
+  const text=fc.text.slice(0,30000);
+  return {url:target,html:'',text,fallback:true,source:fc.source,score:scorePage('',text,true)};
+ }
  const direct=await directFetch(target);
  if(direct){
   const text=cleanText(direct.html).slice(0,30000);
@@ -156,8 +184,8 @@ export async function POST(req){
    }
   }
   if(!docs.length)return NextResponse.json({
-   error:'ページを取得できませんでした。取得経路を4通り試しましたが、すべて失敗しました。',
-   debug:{direct:'failed',allorigins:'failed',microlink:'failed',jina:'failed'}
+   error:'ページを取得できませんでした。Firecrawlを含む5経路を試しましたが、すべて失敗しました。',
+   debug:{firecrawl:'failed',direct:'failed',allorigins:'failed',microlink:'failed',jina:'failed'}
   },{status:422});
 
   stage='scoring';
