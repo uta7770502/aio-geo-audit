@@ -139,14 +139,15 @@ async function readerFallback(target){
  }catch{return null}
 }
 async function fetchPage(target){
- const [fc,direct,proxied,micro,fb]=await Promise.all([
-  firecrawlFallback(target),directFetch(target),allOriginsFallback(target),microlinkFallback(target),readerFallback(target)
+ const [direct,proxied,micro,fb]=await Promise.all([
+  directFetch(target),allOriginsFallback(target),microlinkFallback(target),readerFallback(target)
  ]);
- if(fc){const text=fc.text.slice(0,30000);return {url:target,html:'',text,fallback:true,source:fc.source,score:scorePage('',text,true)}}
  if(direct){const text=cleanText(direct.html).slice(0,30000);return {url:target,html:direct.html,text,fallback:false,source:direct.source,score:scorePage(direct.html,text,false)}}
  if(proxied){const text=cleanText(proxied.html).slice(0,30000);return {url:target,html:proxied.html,text,fallback:true,source:proxied.source,score:scorePage(proxied.html,text,true)}}
  if(micro){const text=micro.text.slice(0,30000);return {url:target,html:'',text,fallback:true,source:micro.source,score:scorePage('',text,true)}}
  if(fb){const text=fb.text.slice(0,30000);return {url:target,html:'',text,fallback:true,source:fb.source,score:scorePage('',text,true)}}
+ const fc=await firecrawlFallback(target);
+ if(fc){const text=fc.text.slice(0,30000);return {url:target,html:'',text,fallback:true,source:fc.source,score:scorePage('',text,true)}}
  return null;
 }
 
@@ -180,11 +181,9 @@ export async function POST(req){
    }
   }
   if(!docs.length){
-   const fcDebug=await firecrawlFallback(start.href,true);
-   const fcMsg=fcDebug?.error ? `Firecrawl: ${fcDebug.error}${fcDebug.detail?' / '+fcDebug.detail:''}` : 'Firecrawl: failed';
    return NextResponse.json({
-    error:'ページを取得できませんでした。'+fcMsg,
-    debug:{hasFirecrawlKey:Boolean(process.env.FIRECRAWL_API_KEY),firecrawl:fcDebug||'failed',direct:'failed',allorigins:'failed',microlink:'failed',jina:'failed'}
+    error:'ページを取得できませんでした。対象サイトが外部取得を制限している可能性があります。',
+    debug:{hasFirecrawlKey:Boolean(process.env.FIRECRAWL_API_KEY),direct:'failed',allorigins:'failed',microlink:'failed',jina:'failed',firecrawl:'failed-or-timeout'}
    },{status:422});
   }
 
