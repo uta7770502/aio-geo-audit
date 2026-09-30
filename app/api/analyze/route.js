@@ -52,7 +52,14 @@ function internalLinks(html,base){
 async function firecrawlFallback(target,debug=false){
  try{
   const headers={'content-type':'application/json','accept':'application/json'};
-  if(process.env.FIRECRAWL_API_KEY) headers.authorization='Bearer '+process.env.FIRECRAWL_API_KEY;
+  const rawKey=String(process.env.FIRECRAWL_API_KEY||'');
+  const apiKey=rawKey
+   .replace(/[\u200B-\u200D\u2060\uFEFF\r\n\t]/g,'')
+   .trim()
+   .replace(/^["']|["']$/g,'')
+   .replace(/^Bearer\s+/i,'')
+   .trim();
+  if(apiKey) headers.authorization='Bearer '+apiKey;
   const res=await fetch('https://api.firecrawl.dev/v2/scrape',{
    method:'POST',
    headers,
