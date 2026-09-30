@@ -49,26 +49,31 @@ function internalLinks(html,base){
  return [...new Set(out)];
 }
 
-async function firecrawlFallback(target){
+async function firecrawlFallback(target,debug=false){
  try{
+  const headers={'content-type':'application/json','accept':'application/json'};
+  if(process.env.FIRECRAWL_API_KEY) headers.authorization='Bearer '+process.env.FIRECRAWL_API_KEY;
   const res=await fetch('https://api.firecrawl.dev/v2/scrape',{
    method:'POST',
-   headers:{'content-type':'application/json','accept':'application/json'},
+   headers,
    body:JSON.stringify({
     url:target,
     formats:['markdown'],
-    onlyMainContent:false,
-    proxy:'auto'
+    onlyMainContent:false
    }),
    signal:AbortSignal.timeout(30000),
    cache:'no-store'
   });
-  if(!res.ok)return null;
-  const json=await res.json();
+  const raw=await res.text();
+  let json={};
+  try{json=JSON.parse(raw)}catch{}
+  if(!res.ok)return debug?{error:'HTTP '+res.status,detail:raw.slice(0,500),source:'firecrawl'}:null;
   const text=json?.data?.markdown || json?.markdown || '';
-  if(typeof text!=='string'||text.trim().length<100)return null;
+  if(typeof text!=='string'||text.trim().length<100)return debug?{error:'empty-markdown',detail:raw.slice(0,500),source:'firecrawl'}:null;
   return {text,source:'firecrawl'};
- }catch{return null}
+ }catch(e){
+  return debug?{error:e?.message||String(e),source:'firecrawl'}:null;
+ }
 }
 
 async function directFetch(target){
@@ -216,4 +221,12 @@ export async function POST(req){
  }catch(e){
   return NextResponse.json({error:`診断処理でエラーが発生しました（${stage}）: ${e?.message||String(e)}`},{status:500});
  }
+}
+
+export async function GET(req){
+ const u=new URL(req.url);
+ if(u.searchParams.get('debug')!=='1') return NextResponse.json({ok:true,service:'aio-geo-audit'});
+ const target=u.searchParams.get('url')||'https://www.e-xpress.jp/';
+ const result=await firecrawlFallback(target,true);
+ return NextResponse.json({target,hasKey:Boolean(process.env.FIRECRAWL_API_KEY),result});
 }
