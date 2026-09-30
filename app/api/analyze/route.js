@@ -59,9 +59,11 @@ async function firecrawlFallback(target,debug=false){
    body:JSON.stringify({
     url:target,
     formats:['markdown'],
-    onlyMainContent:false
+    onlyMainContent:true,
+    maxAge:86400000,
+    timeout:45000
    }),
-   signal:AbortSignal.timeout(30000),
+   signal:AbortSignal.timeout(55000),
    cache:'no-store'
   });
   const raw=await res.text();
@@ -160,6 +162,8 @@ async function fetchPage(target){
  }
  return null;
 }
+
+export const maxDuration = 60;
 
 export async function POST(req){
  let stage='request';
