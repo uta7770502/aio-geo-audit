@@ -9,6 +9,12 @@ function normalizeInput(raw){
  if(!/^https?:\/\//i.test(v))v='https://'+v;
  return v;
 }
+function isBlockedHost(hostname){
+ const h=hostname.toLowerCase();
+ return h==='localhost'||h.endsWith('.localhost')||h==='0.0.0.0'||h==='127.0.0.1'||h==='::1'||
+ /^10\./.test(h)||/^192\.168\./.test(h)||/^169\.254\./.test(h)||
+ /^172\.(1[6-9]|2\d|3[01])\./.test(h);
+}
 function scorePage(html,text,fallback=false){
  const title=/<title[^>]*>(.*?)<\/title>/is.test(html)||/^Title:/mi.test(text);
  const meta=/name=["']description["'][^>]*content=["'][^"']{50,}["']/i.test(html)||/content=["'][^"']{50,}["'][^>]*name=["']description["']/i.test(html);
@@ -51,35 +57,51 @@ async function directFetch(target){
     'accept':'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     'accept-language':'ja,en-US;q=0.9,en;q=0.8'
    },
-   signal:AbortSignal.timeout(15000),
+   signal:AbortSignal.timeout(12000),
    cache:'no-store'
   });
   const ct=res.headers.get('content-type')||'';
   if(!res.ok||!ct.includes('text/html'))return null;
-  return {html:await res.text(),fallback:false};
+  return {html:await res.text(),source:'direct'};
+ }catch{return null}
+}
+async function allOriginsFallback(target){
+ try{
+  const proxy='https://api.allorigins.win/raw?url='+encodeURIComponent(target);
+  const res=await fetch(proxy,{headers:{'accept':'text/html,*/*','user-agent':'Mozilla/5.0'},signal:AbortSignal.timeout(18000),cache:'no-store'});
+  if(!res.ok)return null;
+  const html=await res.text();
+  if(html.trim().length<100)return null;
+  return {html,source:'allorigins'};
  }catch{return null}
 }
 async function readerFallback(target){
  try{
   const parsed=new URL(target);
-  const reader='https://r.jina.ai/'+parsed.href;
-  const res=await fetch(reader,{headers:{'accept':'text/plain','user-agent':'Mozilla/5.0'},signal:AbortSignal.timeout(20000),cache:'no-store'});
+  const reader='https://r.jina.ai/http://r.jina.ai/http://invalid.local';
+  const realReader='https://r.jina.ai/'+parsed.href;
+  const res=await fetch(realReader,{headers:{'accept':'text/plain','user-agent':'Mozilla/5.0'},signal:AbortSignal.timeout(18000),cache:'no-store'});
   if(!res.ok)return null;
   const text=await res.text();
   if(text.trim().length<100)return null;
-  return {html:'',text,fallback:true};
+  return {text,source:'jina'};
  }catch{return null}
 }
 async function fetchPage(target){
  const direct=await directFetch(target);
  if(direct){
   const text=cleanText(direct.html).slice(0,30000);
-  return {url:target,html:direct.html,text,fallback:false,score:scorePage(direct.html,text,false)};
+  return {url:target,html:direct.html,text,fallback:false,source:direct.source,score:scorePage(direct.html,text,false)};
+ }
+ const proxied=await allOriginsFallback(target);
+ if(proxied){
+  const text=cleanText(proxied.html).slice(0,30000);
+  return {url:target,html:proxied.html,text,fallback:true,source:proxied.source,score:scorePage(proxied.html,text,true)};
  }
  const fb=await readerFallback(target);
  if(fb){
   const text=fb.text.slice(0,30000);
-  return {url:target,html:'',text,fallback:true,score:scorePage('',text,true)};
+  return {url:target,html:'',text,fallback:true,source:fb.source,score:scorePage('',text,true)};
  }
  return null;
 }
@@ -96,6 +118,7 @@ export async function POST(req){
    return NextResponse.json({error:'URLの形式を認識できませんでした。https://example.com の形式で入力してください。'},{status:400});
   }
   if(!['http:','https:'].includes(start.protocol))return NextResponse.json({error:'http または https のURLを入力してください。'},{status:400});
+  if(isBlockedHost(start.hostname))return NextResponse.json({error:'このホストは診断対象にできません。'},{status:400});
 
   stage='crawl';
   const queue=[start.href]; const seen=new Set(); const docs=[];
@@ -106,11 +129,14 @@ export async function POST(req){
    const page=await fetchPage(target);
    if(!page)continue;
    docs.push(page);
-   if(!page.fallback){
+   if(page.html){
     for(const l of internalLinks(page.html,target)){if(queue.length<20&&!seen.has(l))queue.push(l)}
    }
   }
-  if(!docs.length)return NextResponse.json({error:'ページを取得できませんでした。相手サイトが外部解析を制限している可能性があります。'},{status:422});
+  if(!docs.length)return NextResponse.json({
+   error:'ページを取得できませんでした。取得経路を3通り試しましたが、すべて失敗しました。',
+   debug:{direct:'failed',allorigins:'failed',jina:'failed'}
+  },{status:422});
 
   stage='scoring';
   const keys=['entity','structure','schema','faq','trust','citation']; const categories={};
@@ -133,8 +159,9 @@ export async function POST(req){
 
   return NextResponse.json({
    url:start.href,title:firstTitle||start.hostname,score,pagesAnalyzed:docs.length,pages:docs.map(d=>d.url),categories,actions,
-   summary:`${docs.length}ページを取得し、AIO/GEO観点の6カテゴリを診断しました。現時点の総合スコアは ${score}/100 です。${usedFallback?' 一部ページは外部取得制限のためテキスト解析モードを使用しました。':''}`,
-   fallbackUsed:usedFallback
+   summary:`${docs.length}ページを取得し、AIO/GEO観点の6カテゴリを診断しました。現時点の総合スコアは ${score}/100 です。${usedFallback?' 一部ページは代替取得経路を使用しました。':''}`,
+   fallbackUsed:usedFallback,
+   fetchSources:[...new Set(docs.map(d=>d.source))]
   });
  }catch(e){
   return NextResponse.json({error:`診断処理でエラーが発生しました（${stage}）: ${e?.message||String(e)}`},{status:500});
