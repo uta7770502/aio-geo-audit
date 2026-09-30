@@ -139,31 +139,14 @@ async function readerFallback(target){
  }catch{return null}
 }
 async function fetchPage(target){
- const fc=await firecrawlFallback(target);
- if(fc){
-  const text=fc.text.slice(0,30000);
-  return {url:target,html:'',text,fallback:true,source:fc.source,score:scorePage('',text,true)};
- }
- const direct=await directFetch(target);
- if(direct){
-  const text=cleanText(direct.html).slice(0,30000);
-  return {url:target,html:direct.html,text,fallback:false,source:direct.source,score:scorePage(direct.html,text,false)};
- }
- const proxied=await allOriginsFallback(target);
- if(proxied){
-  const text=cleanText(proxied.html).slice(0,30000);
-  return {url:target,html:proxied.html,text,fallback:true,source:proxied.source,score:scorePage(proxied.html,text,true)};
- }
- const micro=await microlinkFallback(target);
- if(micro){
-  const text=micro.text.slice(0,30000);
-  return {url:target,html:'',text,fallback:true,source:micro.source,score:scorePage('',text,true)};
- }
- const fb=await readerFallback(target);
- if(fb){
-  const text=fb.text.slice(0,30000);
-  return {url:target,html:'',text,fallback:true,source:fb.source,score:scorePage('',text,true)};
- }
+ const [fc,direct,proxied,micro,fb]=await Promise.all([
+  firecrawlFallback(target),directFetch(target),allOriginsFallback(target),microlinkFallback(target),readerFallback(target)
+ ]);
+ if(fc){const text=fc.text.slice(0,30000);return {url:target,html:'',text,fallback:true,source:fc.source,score:scorePage('',text,true)}}
+ if(direct){const text=cleanText(direct.html).slice(0,30000);return {url:target,html:direct.html,text,fallback:false,source:direct.source,score:scorePage(direct.html,text,false)}}
+ if(proxied){const text=cleanText(proxied.html).slice(0,30000);return {url:target,html:proxied.html,text,fallback:true,source:proxied.source,score:scorePage(proxied.html,text,true)}}
+ if(micro){const text=micro.text.slice(0,30000);return {url:target,html:'',text,fallback:true,source:micro.source,score:scorePage('',text,true)}}
+ if(fb){const text=fb.text.slice(0,30000);return {url:target,html:'',text,fallback:true,source:fb.source,score:scorePage('',text,true)}}
  return null;
 }
 
