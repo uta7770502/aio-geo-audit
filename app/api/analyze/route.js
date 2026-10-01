@@ -267,7 +267,8 @@ export async function POST(req){
      'Organization / Service等のJSON-LDを公開HTMLへ実装する',
      'FAQ・会社情報・実績など引用しやすい一次情報を公開する'
     ],
-    summary:'外部AIクローラからページ本文を取得できませんでした。これはAIO/GEO上の重要な診断項目です。取得可能性の改善を最優先してください。',
+    summary:'今回の診断では、外部からページ本文を取得できませんでした。AI検索サービスによって取得条件は異なるため、すべてのAIが閲覧できないことを意味するものではありません。',
+    summarySimple:'AI側からこのサイトの中身をうまく読み取れませんでした。人には普通に見えていても、AIには情報が届きにくい可能性があります。robots.txt、WAF・Bot対策、JavaScript依存などを確認すると改善できる可能性があります。',
     fallbackUsed:true,
     fetchSources:[],
     crawlabilityIssue:true,
@@ -300,6 +301,7 @@ export async function POST(req){
   return NextResponse.json({
    url:start.href,title:firstTitle||start.hostname,score,pagesAnalyzed:docs.length,pages:docs.map(d=>d.url),categories,actions,
    summary:`${docs.length}ページを取得し、AIO/GEO観点の6カテゴリを診断しました。現時点の総合スコアは ${score}/100 です。${usedFallback?' 一部ページは代替取得経路を使用しました。':''}`,
+   summarySimple:`AIがこのサイトを理解・回答・引用しやすいかを100点満点で確認した結果、${score}点でした。点数が低い項目から直すと、AIに内容が伝わりやすくなります。`,
    fallbackUsed:usedFallback,
    fetchSources:[...new Set(docs.map(d=>d.source))],
    contentAudit:contentAudit(docs[0]?.text||'',firstTitle||start.hostname),
