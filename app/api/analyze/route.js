@@ -163,6 +163,29 @@ async function sitemapUrls(start){
  await Promise.all([fetchMap(new URL('/sitemap.xml',start).href),fetchMap(new URL('/sitemap_index.xml',start).href)]);
  return [...found];
 }
+function classifyPage(d,start){
+ let path=''; try{path=new URL(d.url).pathname.toLowerCase()}catch{}
+ const t=(d.text||'').slice(0,12000);
+ const home=path==='/'||path==='';
+ if(home)return {role:'home',label:'トップページ',weight:2.0};
+ if(/service|business|solution|product|事業|サービス|製品/.test(path+' '+t.slice(0,1000)))return {role:'service',label:'サービス・事業',weight:1.7};
+ if(/company|about|profile|corporate|会社概要|企業情報/.test(path+' '+t.slice(0,1000)))return {role:'company',label:'会社概要',weight:1.5};
+ if(/faq|question|よくある質問|q&a/.test(path+' '+t.slice(0,1500)))return {role:'faq',label:'FAQ',weight:1.4};
+ if(/case|works|result|portfolio|実績|事例|導入/.test(path+' '+t.slice(0,1500)))return {role:'proof',label:'実績・事例',weight:1.4};
+ if(/contact|inquiry|お問い合わせ/.test(path))return {role:'contact',label:'お問い合わせ',weight:.7};
+ if(/news|blog|column|article|topics|お知らせ/.test(path))return {role:'article',label:'記事・お知らせ',weight:.8};
+ return {role:'other',label:'その他',weight:1.0};
+}
+function weightedAvg(docs,key,start){
+ let total=0,weights=0;
+ for(const d of docs){const w=classifyPage(d,start).weight;total+=d.score[key]*w;weights+=w}
+ return Math.round(total/Math.max(weights,1));
+}
+function roleCoverage(docs,start){
+ const roles=docs.map(d=>classifyPage(d,start).role);
+ const defs=[['home','トップページ'],['service','サービス・事業'],['company','会社概要'],['faq','FAQ'],['proof','実績・事例']];
+ return defs.map(([role,label])=>({role,label,found:roles.includes(role),count:roles.filter(x=>x===role).length}));
+}
 function pageDetail(d){
  const html=d.html||'', text=d.text||'';
  const title=html.match(/<title[^>]*>(.*?)<\/title>/is)?.[1]?.replace(/<[^>]+>/g,' ').trim()||d.url;
@@ -179,7 +202,7 @@ function pageDetail(d){
  if(!hasSchema)issues.push('ページ内容に合う構造化データを検討する');
  if(!hasFaq)issues.push('必要に応じて具体的なFAQを追加する');
  if(!hasTrust)issues.push('運営者・実績など信頼情報への導線を明確にする');
- return {url:d.url,title,score,categories:d.score,source:d.source,checks:{h1,description:hasDescription,schema:hasSchema,faq:hasFaq,trust:hasTrust},issues:issues.slice(0,5)};
+ const role=classifyPage(d);\n return {url:d.url,title,score,categories:d.score,source:d.source,role:role.role,roleLabel:role.label,weight:role.weight,checks:{h1,description:hasDescription,schema:hasSchema,faq:hasFaq,trust:hasTrust},issues:issues.slice(0,5)};
 }
 async function firecrawlFallback(target,debug=false){
  try{
@@ -374,7 +397,7 @@ export async function POST(req){
    citation:['AIが抜き出しやすい短い定義文・比較表・箇条書きを増やす','独自データや一次情報を具体的な数値と出典付きで掲載する']
   };
   for(const k of keys){
-   const s=avg(docs.map(d=>d.score),k);
+   const s=weightedAvg(docs,k,start);
    categories[k]={score:s,findings:s>=80?['現状は比較的良好です。継続的に情報を更新してください。']:findings[k]};
   }
   const score=Math.round(keys.reduce((a,k)=>a+categories[k].score,0)/keys.length);
@@ -383,7 +406,7 @@ export async function POST(req){
   const usedFallback=docs.some(d=>d.fallback);
 
   return NextResponse.json({
-   url:start.href,title:firstTitle||start.hostname,score,pagesAnalyzed:docs.length,pagesDiscovered:seen.size,pagesFailed:failed.length,complete:failed.length===0&&queue.length===0,pages:docs.map(d=>d.url),pageResults:docs.map(pageDetail),failedPages:failed.slice(0,50),categories,actions,
+   url:start.href,title:firstTitle||start.hostname,score,pagesAnalyzed:docs.length,pagesDiscovered:seen.size,pagesFailed:failed.length,complete:failed.length===0&&queue.length===0,pages:docs.map(d=>d.url),pageResults:docs.map(pageDetail),roleCoverage:roleCoverage(docs,start),scoringMethod:'重要ページ加重評価',failedPages:failed.slice(0,50),categories,actions,
    summary:`${docs.length}ページを取得し、AIO/GEO観点の6カテゴリを診断しました。現時点の総合スコアは ${score}/100 です。${usedFallback?' 一部ページは代替取得経路を使用しました。':''}`,
    summarySimple:`AIがこのサイトを理解・回答・引用しやすいかを100点満点で確認した結果、${score}点でした。点数が低い項目から直すと、AIに内容が伝わりやすくなります。`,
    fallbackUsed:usedFallback,
