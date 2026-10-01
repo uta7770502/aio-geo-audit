@@ -141,6 +141,33 @@ function internalLinks(html,base){
  return [...new Set(out)];
 }
 
+async function sitemapUrls(start){
+ const found=new Set();
+ const fetchMap=async(url,depth=0)=>{
+  if(depth>2)return;
+  try{
+   const res=await fetch(url,{headers:{'user-agent':'Mozilla/5.0','accept':'application/xml,text/xml,*/*'},signal:AbortSignal.timeout(8000),cache:'no-store'});
+   if(!res.ok)return;
+   const xml=await res.text();
+   const locs=[...xml.matchAll(/<loc[^>]*>([\s\S]*?)<\/loc>/gi)].map(m=>m[1].replace(/&amp;/g,'&').trim());
+   for(const loc of locs){
+    try{
+     const u=new URL(loc,start);
+     if(u.origin!==start.origin)continue;
+     if(/\.xml(?:$|\?)/i.test(u.pathname+u.search))await fetchMap(u.href,depth+1);
+     else if(/^https?:$/.test(u.protocol))found.add(u.href.split('#')[0]);
+    }catch{}
+   }
+  }catch{}
+ };
+ await Promise.all([fetchMap(new URL('/sitemap.xml',start).href),fetchMap(new URL('/sitemap_index.xml',start).href)]);
+ return [...found];
+}
+function pageDetail(d){
+ const title=d.html?.match(/<title[^>]*>(.*?)<\/title>/is)?.[1]?.replace(/<[^>]+>/g,' ').trim()||d.url;
+ const score=Math.round(Object.values(d.score).reduce((a,b)=>a+b,0)/Object.keys(d.score).length);
+ return {url:d.url,title,score,categories:d.score,source:d.source};
+}
 async function firecrawlFallback(target,debug=false){
  try{
   const headers={'content-type':'application/json','accept':'application/json'};
@@ -249,7 +276,7 @@ async function fetchPage(target){
  return null;
 }
 
-export const maxDuration = 30;
+export const maxDuration = 300;
 
 export async function POST(req){
  let stage='request';
@@ -266,16 +293,27 @@ export async function POST(req){
   if(isBlockedHost(start.hostname))return NextResponse.json({error:'このホストは診断対象にできません。'},{status:400});
 
   stage='crawl';
-  const queue=candidateUrls(start); const seen=new Set(); const docs=[];
-  while(queue.length&&docs.length<1){
-   const target=queue.shift();
-   if(!target||seen.has(target))continue;
-   seen.add(target);
-   const page=await fetchPage(target);
-   if(!page)continue;
-   docs.push(page);
-   if(page.html){
-    for(const l of internalLinks(page.html,target)){if(queue.length<8&&!seen.has(l))queue.push(l)}
+  const sitemap=await sitemapUrls(start);
+  const queue=[...candidateUrls(start),...sitemap]; const seen=new Set(); const docs=[]; const failed=[];
+  const MAX_PAGES=200;
+  while(queue.length&&seen.size<MAX_PAGES){
+   const batch=[];
+   while(queue.length&&batch.length<5&&seen.size+batch.length<MAX_PAGES){
+    const target=queue.shift();
+    if(!target||seen.has(target)||batch.includes(target))continue;
+    batch.push(target);
+   }
+   if(!batch.length)break;
+   batch.forEach(x=>seen.add(x));
+   const results=await Promise.all(batch.map(async target=>({target,page:await fetchPage(target)})));
+   for(const {target,page} of results){
+    if(!page){failed.push(target);continue}
+    docs.push(page);
+    if(page.html){
+     for(const l of internalLinks(page.html,target)){
+      if(!seen.has(l)&&!queue.includes(l)&&queue.length<MAX_PAGES*2)queue.push(l);
+     }
+    }
    }
   }
   if(!docs.length){
@@ -332,14 +370,14 @@ export async function POST(req){
   const usedFallback=docs.some(d=>d.fallback);
 
   return NextResponse.json({
-   url:start.href,title:firstTitle||start.hostname,score,pagesAnalyzed:docs.length,pages:docs.map(d=>d.url),categories,actions,
+   url:start.href,title:firstTitle||start.hostname,score,pagesAnalyzed:docs.length,pagesDiscovered:seen.size,pagesFailed:failed.length,complete:failed.length===0&&queue.length===0,pages:docs.map(d=>d.url),pageResults:docs.map(pageDetail),failedPages:failed.slice(0,50),categories,actions,
    summary:`${docs.length}ページを取得し、AIO/GEO観点の6カテゴリを診断しました。現時点の総合スコアは ${score}/100 です。${usedFallback?' 一部ページは代替取得経路を使用しました。':''}`,
    summarySimple:`AIがこのサイトを理解・回答・引用しやすいかを100点満点で確認した結果、${score}点でした。点数が低い項目から直すと、AIに内容が伝わりやすくなります。`,
    fallbackUsed:usedFallback,
    fetchSources:[...new Set(docs.map(d=>d.source))],
    executiveSummary:executiveSummary(categories,false),
-   contentAudit:contentAudit(docs[0]?.text||'',firstTitle||start.hostname),
-   clientGuide:Object.fromEntries(Object.entries(categories).map(([k,v])=>{const g=clientExplanation(k,v.score,firstTitle||start.hostname);const sample=siteSamples(docs[0]?.text||'',firstTitle||start.hostname);return [k,{...g,siteBefore:sample.source,siteAfter:k==='citation'?sample.citation:sample.improved}]})),
+   contentAudit:contentAudit(docs.map(d=>d.text).join(' ').slice(0,120000),firstTitle||start.hostname),
+   clientGuide:Object.fromEntries(Object.entries(categories).map(([k,v])=>{const g=clientExplanation(k,v.score,firstTitle||start.hostname);const sample=siteSamples(docs.map(d=>d.text).join(' ').slice(0,120000),firstTitle||start.hostname);return [k,{...g,siteBefore:sample.source,siteAfter:k==='citation'?sample.citation:sample.improved}]})),
    implementationPlan:buildImplementationPlan(categories,false)
   });
  }catch(e){
