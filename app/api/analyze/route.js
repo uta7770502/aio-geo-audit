@@ -43,6 +43,20 @@ function scorePage(html,text,fallback=false){
   citation:Math.min(100,(meta?20:0)+(answer?30:0)+(h2>=3?20:0)+(text.length>1500?30:text.length>700?15:5))
  }
 }
+
+function buildImplementationPlan(categories,crawlabilityIssue=false){
+ const plans={
+  entity:{title:'企業・サービス情報をAI向けに明確化',impact:'高',type:'content',codeTarget:'title / meta description / ファーストビュー',instruction:'誰が・誰向けに・何を提供する会社かを1〜2文で明示する。'},
+  structure:{title:'見出しと情報階層を整理',impact:'高',type:'html',codeTarget:'H1 / H2 / H3',instruction:'H1をページの主題1つに絞り、H2/H3で質問単位・テーマ単位に構造化する。'},
+  schema:{title:'構造化データを実装',impact:'高',type:'jsonld',codeTarget:'JSON-LD',instruction:'Organization / Service / FAQPageなどページ内容に合うschema.orgを追加する。'},
+  faq:{title:'AIが回答に使えるFAQを追加',impact:'中',type:'content+jsonld',codeTarget:'FAQ section / FAQPage',instruction:'実際の顧客質問に短い結論から回答し、FAQPage構造化データと一致させる。'},
+  trust:{title:'信頼情報を明示',impact:'高',type:'content',codeTarget:'会社概要 / 著者・監修 / 更新日',instruction:'運営者、所在地、連絡先、実績、更新日など検証可能な情報を明示する。'},
+  citation:{title:'AIが引用しやすい本文へ改善',impact:'高',type:'content',codeTarget:'本文 / 表 / 箇条書き',instruction:'定義、数値、比較、一次情報を短い段落・表・箇条書きで提示する。'}
+ };
+ const ordered=Object.entries(categories).sort((a,b)=>a[1].score-b[1].score).map(([key,v],i)=>({priority:i+1,key,score:v.score,...plans[key]}));
+ if(crawlabilityIssue)ordered.unshift({priority:0,key:'crawlability',score:0,title:'AIクローラビリティを改善',impact:'最優先',type:'server',codeTarget:'robots.txt / WAF / SSR',instruction:'AIクローラが公開HTMLへ到達できるようrobots、WAF/Bot制御、SSR/静的HTML配信を確認する。'});
+ return ordered;
+}
 function avg(xs,k){return Math.round(xs.reduce((a,x)=>a+x[k],0)/xs.length)}
 function internalLinks(html,base){
  const out=[]; let baseUrl;
@@ -219,7 +233,10 @@ export async function POST(req){
     summary:'外部AIクローラからページ本文を取得できませんでした。これはAIO/GEO上の重要な診断項目です。取得可能性の改善を最優先してください。',
     fallbackUsed:true,
     fetchSources:[],
-    crawlabilityIssue:true
+    crawlabilityIssue:true,
+    implementationPlan:buildImplementationPlan({
+     entity:{score:20},structure:{score:25},schema:{score:20},faq:{score:15},trust:{score:20},citation:{score:10}
+    },true)
    });
   }
 
@@ -246,7 +263,8 @@ export async function POST(req){
    url:start.href,title:firstTitle||start.hostname,score,pagesAnalyzed:docs.length,pages:docs.map(d=>d.url),categories,actions,
    summary:`${docs.length}ページを取得し、AIO/GEO観点の6カテゴリを診断しました。現時点の総合スコアは ${score}/100 です。${usedFallback?' 一部ページは代替取得経路を使用しました。':''}`,
    fallbackUsed:usedFallback,
-   fetchSources:[...new Set(docs.map(d=>d.source))]
+   fetchSources:[...new Set(docs.map(d=>d.source))],
+   implementationPlan:buildImplementationPlan(categories,false)
   });
  }catch(e){
   return NextResponse.json({error:`診断処理でエラーが発生しました（${stage}）: ${e?.message||String(e)}`},{status:500});
