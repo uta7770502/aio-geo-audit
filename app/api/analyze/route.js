@@ -44,6 +44,17 @@ function scorePage(html,text,fallback=false){
  }
 }
 
+function clientExplanation(key,score,title='このサイト'){
+ const map={
+  entity:{plain:'AIに「何の会社で、誰に何を提供しているか」が伝わるかを見ています。',why:'ここが曖昧だと、AI検索で会社名やサービスを正しく紹介されにくくなります。',before:'私たちは幅広いニーズに応える高品質なサービスを提供しています。',after:`${title}は、〇〇に悩む企業向けに△△を提供するサービスです。□□まで一貫して対応します。`},
+  structure:{plain:'ページの話題が、見出しを追うだけで理解できるかを見ています。',why:'人にもAIにも「どこに何が書いてあるか」が分かりやすくなります。',before:'H1や大見出しが複数あり、サービス説明・実績・料金が同じ階層に並んでいる。',after:'H1「〇〇サービス」→ H2「サービス概要」→ H2「選ばれる理由」→ H2「料金」→ H2「よくある質問」の順に整理。'},
+  schema:{plain:'ページの内容をAIや検索エンジンへ機械的に伝える目印があるかを見ています。',why:'会社名、サービス、FAQなどを誤解なく読み取ってもらう助けになります。',before:'画面には会社情報があるが、機械向けの情報指定がない。',after:'Organization / Service / FAQPageの構造化データを追加し、画面の内容と一致させる。'},
+  faq:{plain:'お客様が実際に聞きそうな質問に、ページ内で直接答えているかを見ています。',why:'AIは質問と明確な回答の組み合わせを回答材料として使いやすいためです。',before:'詳しくはお問い合わせください。',after:'Q. 費用はどのくらいですか？ A. 内容により異なりますが、〇〇は△△円〜です。見積前に条件を確認します。'},
+  trust:{plain:'「誰が運営し、どんな根拠や実績があるか」を確認できるかを見ています。',why:'AIにも閲覧者にも、情報を信用してよいか判断する材料になります。',before:'実績豊富なスタッフが対応します。',after:'運営会社、所在地、担当領域、具体的な実績数、更新日、問い合わせ先を明記する。'},
+  citation:{plain:'AIが回答文へそのまま引用しやすい情報の形になっているかを見ています。',why:'短い定義文、具体的な数値、比較表、箇条書きはAIが意味を切り出しやすくなります。',before:'お客様に合わせた最適なサービスを幅広くご提案します。',after:`${title}の特徴は3つです。①〇〇 ②△△ ③□□。対応範囲・料金・納期は比較表で明示します。`}
+ };
+ return {...map[key],score};
+}
 function buildImplementationPlan(categories,crawlabilityIssue=false){
  const plans={
   entity:{title:'企業・サービス情報をAI向けに明確化',impact:'高',type:'content',codeTarget:'title / meta description / ファーストビュー',instruction:'誰が・誰向けに・何を提供する会社かを1〜2文で明示する。'},
@@ -234,6 +245,7 @@ export async function POST(req){
     fallbackUsed:true,
     fetchSources:[],
     crawlabilityIssue:true,
+    clientGuide:Object.fromEntries(Object.entries({entity:{score:20},structure:{score:25},schema:{score:20},faq:{score:15},trust:{score:20},citation:{score:10}}).map(([k,v])=>[k,clientExplanation(k,v.score,start.hostname)])),
     implementationPlan:buildImplementationPlan({
      entity:{score:20},structure:{score:25},schema:{score:20},faq:{score:15},trust:{score:20},citation:{score:10}
     },true)
@@ -264,6 +276,7 @@ export async function POST(req){
    summary:`${docs.length}ページを取得し、AIO/GEO観点の6カテゴリを診断しました。現時点の総合スコアは ${score}/100 です。${usedFallback?' 一部ページは代替取得経路を使用しました。':''}`,
    fallbackUsed:usedFallback,
    fetchSources:[...new Set(docs.map(d=>d.source))],
+   clientGuide:Object.fromEntries(Object.entries(categories).map(([k,v])=>[k,clientExplanation(k,v.score,firstTitle||start.hostname)])),
    implementationPlan:buildImplementationPlan(categories,false)
   });
  }catch(e){
