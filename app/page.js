@@ -12,7 +12,19 @@ export default function Page(){
    stage='endpoint';
    const endpoint=window.location.origin+'/api/analyze';
    stage='fetch';
-   const res=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:String(url||'').trim()})});
+   const payload=JSON.stringify({url:String(url||'').trim()});
+   let res=null;
+   let lastFetchError=null;
+   for(let attempt=0;attempt<2;attempt++){
+    try{
+     res=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:payload,cache:'no-store'});
+     break;
+    }catch(e){
+     lastFetchError=e;
+     if(attempt===0)await new Promise(resolve=>setTimeout(resolve,900));
+    }
+   }
+   if(!res)throw new Error('診断サーバーとの通信に失敗しました。通信状態を確認して、もう一度「無料診断する」を押してください。');
    stage='read-body';
    const raw=await res.text();
    stage='parse-json';
