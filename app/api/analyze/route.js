@@ -44,6 +44,17 @@ function scorePage(html,text,fallback=false){
  }
 }
 
+function siteSamples(text='',title='このサイト'){
+ const s=String(text).replace(/\s+/g,' ').trim();
+ const sentences=s.split(/(?<=[。！？!?])/).map(x=>x.trim()).filter(x=>x.length>=20&&x.length<=180);
+ const generic=sentences.find(x=>/サービス|提供|対応|会社|企業|制作|事業|特徴|実績|お客様|顧客/.test(x))||sentences[0]||'サイト内の主要なサービス説明文';
+ const short=generic.slice(0,150);
+ return {
+  source:short,
+  improved:`${title}は、対象となるお客様に向けて提供内容と強みを明確に説明します。具体的には「誰に」「何を」「どこまで対応するか」を最初の1〜2文で示し、実績・料金・対応範囲を箇条書きや表で補足します。`,
+  citation:`「${title}とは何か」を1文で定義し、その直後に特徴を3点の箇条書きで示します。`
+ };
+}
 function clientExplanation(key,score,title='このサイト'){
  const map={
   entity:{plain:'AIに「何の会社で、誰に何を提供しているか」が伝わるかを見ています。',why:'ここが曖昧だと、AI検索で会社名やサービスを正しく紹介されにくくなります。',before:'私たちは幅広いニーズに応える高品質なサービスを提供しています。',after:`${title}は、〇〇に悩む企業向けに△△を提供するサービスです。□□まで一貫して対応します。`},
@@ -276,7 +287,7 @@ export async function POST(req){
    summary:`${docs.length}ページを取得し、AIO/GEO観点の6カテゴリを診断しました。現時点の総合スコアは ${score}/100 です。${usedFallback?' 一部ページは代替取得経路を使用しました。':''}`,
    fallbackUsed:usedFallback,
    fetchSources:[...new Set(docs.map(d=>d.source))],
-   clientGuide:Object.fromEntries(Object.entries(categories).map(([k,v])=>[k,clientExplanation(k,v.score,firstTitle||start.hostname)])),
+   clientGuide:Object.fromEntries(Object.entries(categories).map(([k,v])=>{const g=clientExplanation(k,v.score,firstTitle||start.hostname);const sample=siteSamples(docs[0]?.text||'',firstTitle||start.hostname);return [k,{...g,siteBefore:sample.source,siteAfter:k==='citation'?sample.citation:sample.improved}]})),
    implementationPlan:buildImplementationPlan(categories,false)
   });
  }catch(e){
