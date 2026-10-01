@@ -139,15 +139,25 @@ async function readerFallback(target){
  }catch{return null}
 }
 async function fetchPage(target){
- const [direct,proxied,micro,fb]=await Promise.all([
-  directFetch(target),allOriginsFallback(target),microlinkFallback(target),readerFallback(target)
- ]);
- if(direct){const text=cleanText(direct.html).slice(0,30000);return {url:target,html:direct.html,text,fallback:false,source:direct.source,score:scorePage(direct.html,text,false)}}
- if(proxied){const text=cleanText(proxied.html).slice(0,30000);return {url:target,html:proxied.html,text,fallback:true,source:proxied.source,score:scorePage(proxied.html,text,true)}}
- if(micro){const text=micro.text.slice(0,30000);return {url:target,html:'',text,fallback:true,source:micro.source,score:scorePage('',text,true)}}
- if(fb){const text=fb.text.slice(0,30000);return {url:target,html:'',text,fallback:true,source:fb.source,score:scorePage('',text,true)}}
- const fc=await firecrawlFallback(target);
- if(fc){const text=fc.text.slice(0,30000);return {url:target,html:'',text,fallback:true,source:fc.source,score:scorePage('',text,true)}}
+ const attempts=[
+  ['direct',()=>directFetch(target)],
+  ['jina',()=>readerFallback(target)],
+  ['microlink',()=>microlinkFallback(target)],
+  ['allorigins',()=>allOriginsFallback(target)],
+  ['firecrawl',()=>firecrawlFallback(target)]
+ ];
+ for(const [,run] of attempts){
+  const got=await run();
+  if(!got)continue;
+  if(got.html){
+   const text=cleanText(got.html).slice(0,30000);
+   return {url:target,html:got.html,text,fallback:got.source!=='direct',source:got.source,score:scorePage(got.html,text,got.source!=='direct')};
+  }
+  if(got.text){
+   const text=got.text.slice(0,30000);
+   return {url:target,html:'',text,fallback:true,source:got.source,score:scorePage('',text,true)};
+  }
+ }
  return null;
 }
 
@@ -169,7 +179,7 @@ export async function POST(req){
 
   stage='crawl';
   const queue=[start.href]; const seen=new Set(); const docs=[];
-  while(queue.length&&docs.length<3){
+  while(queue.length&&docs.length<1){
    const target=queue.shift();
    if(!target||seen.has(target))continue;
    seen.add(target);
