@@ -197,9 +197,30 @@ export async function POST(req){
   }
   if(!docs.length){
    return NextResponse.json({
-    error:'ページを取得できませんでした。対象サイトが外部取得を制限している可能性があります。',
-    debug:{hasFirecrawlKey:Boolean(process.env.FIRECRAWL_API_KEY),direct:'failed',allorigins:'failed',microlink:'failed',jina:'failed',firecrawl:'failed-or-timeout'}
-   },{status:422});
+    url:start.href,
+    title:start.hostname,
+    score:18,
+    pagesAnalyzed:0,
+    pages:[],
+    categories:{
+     entity:{score:20,findings:['外部AIクローラから主要コンテンツを取得できませんでした。企業・サービス情報がAIに認識されにくい状態です。']},
+     structure:{score:25,findings:['ページ本文を取得できないため情報構造を十分に評価できません。クローラがHTML本文へ到達できる状態を確認してください。']},
+     schema:{score:20,findings:['構造化データを外部から確認できませんでした。Organization / Service等のJSON-LDを公開HTMLで確認できる状態にしてください。']},
+     faq:{score:15,findings:['FAQ情報をAIクローラから確認できませんでした。質問と回答を公開HTMLに明示してください。']},
+     trust:{score:20,findings:['会社概要・運営者・連絡先などの信頼情報を外部取得できませんでした。']},
+     citation:{score:10,findings:['AIが本文を取得できないため引用されにくい状態です。AIクローラビリティの改善を最優先してください。']}
+    },
+    actions:[
+     'AIクローラが公開HTMLを取得できるようWAF・Bot対策・robots設定を確認する',
+     '会社・サービス概要をJavaScript実行不要のHTMLにも含める',
+     'Organization / Service等のJSON-LDを公開HTMLへ実装する',
+     'FAQ・会社情報・実績など引用しやすい一次情報を公開する'
+    ],
+    summary:'外部AIクローラからページ本文を取得できませんでした。これはAIO/GEO上の重要な診断項目です。取得可能性の改善を最優先してください。',
+    fallbackUsed:true,
+    fetchSources:[],
+    crawlabilityIssue:true
+   });
   }
 
   stage='scoring';
