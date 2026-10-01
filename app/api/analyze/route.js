@@ -98,6 +98,21 @@ function clientExplanation(key,score,title='このサイト'){
  }[key];
  return {...map[key],score,simple,benefit,priority};
 }
+function executiveSummary(categories,crawlabilityIssue=false){
+ const entries=Object.entries(categories||{}).sort((a,b)=>a[1].score-b[1].score);
+ const labels={entity:'企業・サービスの分かりやすさ',structure:'情報構造',schema:'構造化データ',faq:'FAQ',trust:'信頼情報',citation:'引用されやすさ'};
+ const weakest=entries[0]?.[0], strongest=[...entries].sort((a,b)=>b[1].score-a[1].score)[0]?.[0];
+ if(crawlabilityIssue)return {
+  good:'今回の診断ではページ本文を十分に取得できなかったため、良い点の詳細評価は保留です。',
+  issue:'AI側からサイト内容を読み取りにくい可能性があります。まず取得しやすさの確認が必要です。',
+  first:'robots.txt、WAF・Bot対策、JavaScript依存などを確認し、AIが公開HTMLへ到達できる状態を整えます。'
+ };
+ return {
+  good:`${labels[strongest]||'一部項目'}は比較的整っています。現在の良い部分を残しながら改善できます。`,
+  issue:`最も改善余地が大きいのは「${labels[weakest]||'AIO/GEO対応'}」です。ここから直すと優先順位が明確です。`,
+  first:`まず「${labels[weakest]||'優先項目'}」の改善から着手し、その後に次点の項目へ進むのがおすすめです。`
+ };
+}
 function buildImplementationPlan(categories,crawlabilityIssue=false){
  const plans={
   entity:{title:'企業・サービス情報をAI向けに明確化',impact:'高',type:'content',codeTarget:'title / meta description / ファーストビュー',instruction:'誰が・誰向けに・何を提供する会社かを1〜2文で明示する。'},
@@ -289,6 +304,7 @@ export async function POST(req){
     fallbackUsed:true,
     fetchSources:[],
     crawlabilityIssue:true,
+    executiveSummary:executiveSummary({entity:{score:20},structure:{score:25},schema:{score:20},faq:{score:15},trust:{score:20},citation:{score:10}},true),
     clientGuide:Object.fromEntries(Object.entries({entity:{score:20},structure:{score:25},schema:{score:20},faq:{score:15},trust:{score:20},citation:{score:10}}).map(([k,v])=>[k,clientExplanation(k,v.score,start.hostname)])),
     implementationPlan:buildImplementationPlan({
      entity:{score:20},structure:{score:25},schema:{score:20},faq:{score:15},trust:{score:20},citation:{score:10}
@@ -321,6 +337,7 @@ export async function POST(req){
    summarySimple:`AIがこのサイトを理解・回答・引用しやすいかを100点満点で確認した結果、${score}点でした。点数が低い項目から直すと、AIに内容が伝わりやすくなります。`,
    fallbackUsed:usedFallback,
    fetchSources:[...new Set(docs.map(d=>d.source))],
+   executiveSummary:executiveSummary(categories,false),
    contentAudit:contentAudit(docs[0]?.text||'',firstTitle||start.hostname),
    clientGuide:Object.fromEntries(Object.entries(categories).map(([k,v])=>{const g=clientExplanation(k,v.score,firstTitle||start.hostname);const sample=siteSamples(docs[0]?.text||'',firstTitle||start.hostname);return [k,{...g,siteBefore:sample.source,siteAfter:k==='citation'?sample.citation:sample.improved}]})),
    implementationPlan:buildImplementationPlan(categories,false)
