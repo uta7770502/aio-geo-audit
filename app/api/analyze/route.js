@@ -45,16 +45,18 @@ function scorePage(html,text,fallback=false){
 }
 
 function contentAudit(text='',title='このサイト'){
- const t=String(text);
- const hasCompany=/会社概要|企業情報|会社名|所在地|代表者|設立|資本金|株式会社/.test(t);
- const hasService=/サービス|事業内容|提供|制作|支援|ソリューション|商品/.test(t);
- const hasFaq=/よくある質問|FAQ|Q&A|質問/.test(t);
- const hasProof=/実績|事例|導入|取引|お客様|受賞|件以上|年の実績|数字で見る/.test(t);
+ const t=String(text).replace(/\s+/g,' ').trim();
+ const sentences=t.split(/(?<=[。！？!?])/).map(x=>x.trim()).filter(x=>x.length>=12&&x.length<=220);
+ const pick=(re)=>sentences.find(x=>re.test(x))?.slice(0,180)||'該当する明確な記載を確認できませんでした。';
+ const companyRe=/会社概要|企業情報|会社名|所在地|代表者|設立|資本金|株式会社/;
+ const serviceRe=/サービス|事業内容|提供|制作|支援|ソリューション|商品/;
+ const faqRe=/よくある質問|FAQ|Q&A|質問/;
+ const proofRe=/実績|事例|導入|取引|お客様|受賞|件以上|年の実績|数字で見る/;
  return [
-  {key:'company',title:'会社概要',found:hasCompany,plain:'AIが「誰が運営しているサイトか」を確認するための情報です。',advice:hasCompany?'会社名だけでなく、所在地・代表者・事業内容・問い合わせ先まで一か所で確認できるとより明確です。':'会社名、所在地、代表者、事業内容、問い合わせ先をまとめた会社概要を追加してください。'},
-  {key:'service',title:'サービス内容',found:hasService,plain:'AIが「何を提供している会社か」を理解する中心情報です。',advice:hasService?'対象顧客・提供内容・対応範囲・料金の目安まで具体化すると回答に使われやすくなります。':'誰向けに何を提供するかを、ページ冒頭の1〜2文で明記してください。'},
-  {key:'faq',title:'よくある質問',found:hasFaq,plain:'AIがユーザーの質問へ直接回答する材料になります。',advice:hasFaq?'実際の顧客質問を増やし、回答は結論から短く書くと効果的です。':'料金、納期、対応範囲、依頼方法など実際に聞かれる質問をFAQとして追加してください。'},
-  {key:'proof',title:'実績・信頼情報',found:hasProof,plain:'AIと閲覧者が「この会社の情報を信用できるか」を判断する材料です。',advice:hasProof?'実績を社名・件数・期間・成果など具体的な事実や数値で示してください。':'制作事例、導入実績、取引件数、受賞歴など検証できる実績を追加してください。'}
+  {key:'company',title:'会社概要',found:companyRe.test(t),plain:'AIが「誰が運営しているサイトか」を確認するための情報です。',evidence:pick(companyRe),advice:companyRe.test(t)?'会社名だけでなく、所在地・代表者・事業内容・問い合わせ先まで一か所で確認できるとより明確です。':'会社名、所在地、代表者、事業内容、問い合わせ先をまとめた会社概要を追加してください。'},
+  {key:'service',title:'サービス内容',found:serviceRe.test(t),plain:'AIが「何を提供している会社か」を理解する中心情報です。',evidence:pick(serviceRe),advice:serviceRe.test(t)?'対象顧客・提供内容・対応範囲・料金の目安まで具体化すると回答に使われやすくなります。':'誰向けに何を提供するかを、ページ冒頭の1〜2文で明記してください。'},
+  {key:'faq',title:'よくある質問',found:faqRe.test(t),plain:'AIがユーザーの質問へ直接回答する材料になります。',evidence:pick(faqRe),advice:faqRe.test(t)?'実際の顧客質問を増やし、回答は結論から短く書くと効果的です。':'料金、納期、対応範囲、依頼方法など実際に聞かれる質問をFAQとして追加してください。'},
+  {key:'proof',title:'実績・信頼情報',found:proofRe.test(t),plain:'AIと閲覧者が「この会社の情報を信用できるか」を判断する材料です。',evidence:pick(proofRe),advice:proofRe.test(t)?'実績を社名・件数・期間・成果など具体的な事実や数値で示してください。':'制作事例、導入実績、取引件数、受賞歴など検証できる実績を追加してください。'}
  ];
 }
 function siteSamples(text='',title='このサイト'){
