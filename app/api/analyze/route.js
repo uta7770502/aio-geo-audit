@@ -164,9 +164,22 @@ async function sitemapUrls(start){
  return [...found];
 }
 function pageDetail(d){
- const title=d.html?.match(/<title[^>]*>(.*?)<\/title>/is)?.[1]?.replace(/<[^>]+>/g,' ').trim()||d.url;
+ const html=d.html||'', text=d.text||'';
+ const title=html.match(/<title[^>]*>(.*?)<\/title>/is)?.[1]?.replace(/<[^>]+>/g,' ').trim()||d.url;
  const score=Math.round(Object.values(d.score).reduce((a,b)=>a+b,0)/Object.keys(d.score).length);
- return {url:d.url,title,score,categories:d.score,source:d.source};
+ const h1=count(/<h1\b/gi,html)+(d.fallback?count(/^#\s+/gm,text):0);
+ const hasDescription=/name=["']description["']/i.test(html);
+ const hasSchema=/application\/ld\+json/i.test(html);
+ const hasFaq=/FAQPage|よくある質問|FAQ|Q&A/i.test(html+text);
+ const hasTrust=/会社概要|代表者|所在地|住所|お問い合わせ|運営会社|実績|更新日/i.test(text);
+ const issues=[];
+ if(!title||title===d.url)issues.push('ページ内容を表すtitleを明確にする');
+ if(!hasDescription)issues.push('meta descriptionを追加する');
+ if(h1!==1)issues.push(h1===0?'H1を1つ設定する':'H1を1ページ1つに整理する');
+ if(!hasSchema)issues.push('ページ内容に合う構造化データを検討する');
+ if(!hasFaq)issues.push('必要に応じて具体的なFAQを追加する');
+ if(!hasTrust)issues.push('運営者・実績など信頼情報への導線を明確にする');
+ return {url:d.url,title,score,categories:d.score,source:d.source,checks:{h1,description:hasDescription,schema:hasSchema,faq:hasFaq,trust:hasTrust},issues:issues.slice(0,5)};
 }
 async function firecrawlFallback(target,debug=false){
  try{
