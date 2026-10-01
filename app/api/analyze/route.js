@@ -102,7 +102,7 @@ async function directFetch(target){
 async function allOriginsFallback(target){
  try{
   const proxy='https://api.allorigins.win/raw?url='+encodeURIComponent(target);
-  const res=await fetch(proxy,{headers:{'accept':'text/html,*/*','user-agent':'Mozilla/5.0'},signal:AbortSignal.timeout(10000),cache:'no-store'});
+  const res=await fetch(proxy,{headers:{'accept':'text/html,*/*','user-agent':'Mozilla/5.0'},signal:AbortSignal.timeout(15000),cache:'no-store'});
   if(!res.ok)return null;
   const html=await res.text();
   if(html.trim().length<100)return null;
@@ -140,10 +140,8 @@ async function readerFallback(target){
 }
 async function fetchPage(target){
  const attempts=[
-  ['direct',()=>directFetch(target)],
   ['jina',()=>readerFallback(target)],
-  ['microlink',()=>microlinkFallback(target)],
-  ['allorigins',()=>allOriginsFallback(target)],
+  ['direct',()=>directFetch(target)],
   ['firecrawl',()=>firecrawlFallback(target)]
  ];
  for(const [,run] of attempts){
