@@ -9,6 +9,15 @@ function normalizeInput(raw){
  if(!/^https?:\/\//i.test(v))v='https://'+v;
  return v;
 }
+function candidateUrls(start){
+ const out=[start.href];
+ const host=start.hostname;
+ const alt=new URL(start.href);
+ alt.hostname=host.startsWith('www.')?host.slice(4):'www.'+host;
+ out.push(alt.href);
+ if(start.protocol==='https:'){const h=new URL(start.href);h.protocol='http:';out.push(h.href)}
+ return [...new Set(out)];
+}
 function isBlockedHost(hostname){
  const h=hostname.toLowerCase();
  return h==='localhost'||h.endsWith('.localhost')||h==='0.0.0.0'||h==='127.0.0.1'||h==='::1'||
@@ -176,7 +185,7 @@ export async function POST(req){
   if(isBlockedHost(start.hostname))return NextResponse.json({error:'このホストは診断対象にできません。'},{status:400});
 
   stage='crawl';
-  const queue=[start.href]; const seen=new Set(); const docs=[];
+  const queue=candidateUrls(start); const seen=new Set(); const docs=[];
   while(queue.length&&docs.length<1){
    const target=queue.shift();
    if(!target||seen.has(target))continue;
