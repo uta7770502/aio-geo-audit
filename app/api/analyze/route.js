@@ -76,7 +76,7 @@ async function firecrawlFallback(target,debug=false){
     url:target,
     formats:['markdown']
    }),
-   signal:AbortSignal.timeout(8000),
+   signal:AbortSignal.timeout(7000),
    cache:'no-store'
   });
   const raw=await res.text();
@@ -100,7 +100,7 @@ async function directFetch(target){
     'accept':'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     'accept-language':'ja,en-US;q=0.9,en;q=0.8'
    },
-   signal:AbortSignal.timeout(10000),
+   signal:AbortSignal.timeout(7000),
    cache:'no-store'
   });
   const ct=res.headers.get('content-type')||'';
@@ -111,7 +111,7 @@ async function directFetch(target){
 async function allOriginsFallback(target){
  try{
   const proxy='https://api.allorigins.win/raw?url='+encodeURIComponent(target);
-  const res=await fetch(proxy,{headers:{'accept':'text/html,*/*','user-agent':'Mozilla/5.0'},signal:AbortSignal.timeout(15000),cache:'no-store'});
+  const res=await fetch(proxy,{headers:{'accept':'text/html,*/*','user-agent':'Mozilla/5.0'},signal:AbortSignal.timeout(7000),cache:'no-store'});
   if(!res.ok)return null;
   const html=await res.text();
   if(html.trim().length<100)return null;
@@ -124,7 +124,7 @@ async function microlinkFallback(target){
   const api='https://api.microlink.io/?url='+encodeURIComponent(target)+'&data.content.attr=markdown&meta=false';
   const res=await fetch(api,{
    headers:{'accept':'application/json','user-agent':'Mozilla/5.0'},
-   signal:AbortSignal.timeout(10000),
+   signal:AbortSignal.timeout(7000),
    cache:'no-store'
   });
   if(!res.ok)return null;
@@ -140,7 +140,7 @@ async function readerFallback(target){
   const parsed=new URL(target);
   const reader='https://r.jina.ai/http://r.jina.ai/http://invalid.local';
   const realReader='https://r.jina.ai/'+parsed.href;
-  const res=await fetch(realReader,{headers:{'accept':'text/plain','user-agent':'Mozilla/5.0'},signal:AbortSignal.timeout(10000),cache:'no-store'});
+  const res=await fetch(realReader,{headers:{'accept':'text/plain','user-agent':'Mozilla/5.0'},signal:AbortSignal.timeout(7000),cache:'no-store'});
   if(!res.ok)return null;
   const text=await res.text();
   if(text.trim().length<100)return null;
@@ -148,27 +148,25 @@ async function readerFallback(target){
  }catch{return null}
 }
 async function fetchPage(target){
- const attempts=[
-  ['jina',()=>readerFallback(target)],
-  ['direct',()=>directFetch(target)],
-  ['firecrawl',()=>firecrawlFallback(target)]
- ];
- for(const [,run] of attempts){
-  const got=await run();
-  if(!got)continue;
-  if(got.html){
-   const text=cleanText(got.html).slice(0,30000);
-   return {url:target,html:got.html,text,fallback:got.source!=='direct',source:got.source,score:scorePage(got.html,text,got.source!=='direct')};
-  }
-  if(got.text){
-   const text=got.text.slice(0,30000);
-   return {url:target,html:'',text,fallback:true,source:got.source,score:scorePage('',text,true)};
-  }
+ const tasks=[
+  directFetch(target),
+  readerFallback(target),
+  firecrawlFallback(target)
+ ].map(p=>p.then(v=>v||Promise.reject(new Error('empty'))).catch(()=>Promise.reject(new Error('failed'))));
+ let got=null;
+ try{got=await Promise.any(tasks)}catch{return null}
+ if(got.html){
+  const text=cleanText(got.html).slice(0,30000);
+  return {url:target,html:got.html,text,fallback:got.source!=='direct',source:got.source,score:scorePage(got.html,text,got.source!=='direct')};
+ }
+ if(got.text){
+  const text=got.text.slice(0,30000);
+  return {url:target,html:'',text,fallback:true,source:got.source,score:scorePage('',text,true)};
  }
  return null;
 }
 
-export const maxDuration = 60;
+export const maxDuration = 30;
 
 export async function POST(req){
  let stage='request';
