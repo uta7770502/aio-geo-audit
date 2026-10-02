@@ -221,7 +221,8 @@ async function firecrawlFallback(target,debug=false){
    headers,
    body:JSON.stringify({
     url:target,
-    formats:['markdown']
+    formats:['markdown'],
+    location:{country:'JP',languages:['ja']}
    }),
    signal:AbortSignal.timeout(45000),
    cache:'no-store'
