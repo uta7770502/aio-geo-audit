@@ -217,7 +217,7 @@ function pageDetail(d){
  const role=classifyPage(d);
  return {url:d.url,title,score,categories:d.score,source:d.source,role:role.role,roleLabel:role.label,weight:role.weight,checks:{h1,description:hasDescription,schema:hasSchema,faq:hasFaq,trust:hasTrust},issues:issues.slice(0,5)};
 }
-async function firecrawlFallback(target,debug=false){
+async function firecrawlFallback(target,debug=false,attempt=0){
  try{
   const headers={'content-type':'application/json','accept':'application/json'};
   const rawKey=String(process.env.FIRECRAWL_API_KEY||'');
@@ -242,11 +242,15 @@ async function firecrawlFallback(target,debug=false){
   const raw=await res.text();
   let json={};
   try{json=JSON.parse(raw)}catch{}
-  if(!res.ok)return debug?{error:'HTTP '+res.status,detail:raw.slice(0,500),source:'firecrawl'}:null;
+  if(!res.ok){
+   if(attempt<1&&res.status>=500)return firecrawlFallback(target,debug,attempt+1);
+   return debug?{error:'HTTP '+res.status,detail:raw.slice(0,500),source:'firecrawl'}:null;
+  }
   const text=json?.data?.markdown || json?.markdown || '';
   if(typeof text!=='string'||text.trim().length<100)return debug?{error:'empty-markdown',detail:raw.slice(0,500),source:'firecrawl'}:null;
   return {text,source:'firecrawl'};
  }catch(e){
+  if(attempt<1)return firecrawlFallback(target,debug,attempt+1);
   return debug?{error:e?.message||String(e),source:'firecrawl'}:null;
  }
 }
