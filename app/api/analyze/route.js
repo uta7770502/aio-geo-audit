@@ -140,13 +140,25 @@ function internalLinks(html,base){
  }
  return [...new Set(out)];
 }
+function internalLinksFromText(text,base){
+ const out=[]; let baseUrl;
+ try{baseUrl=new URL(base)}catch{return out}
+ for(const m of String(text||'').matchAll(/\]\((https?:\/\/[^)\s]+)\)/gi)){
+  try{
+   const u=new URL(m[1],baseUrl);
+   u.hash='';
+   if(/^https?:$/.test(u.protocol)&&u.origin===baseUrl.origin&&!/\.(?:pdf|jpe?g|png|gif|webp|svg|zip)(?:$|\?)/i.test(u.pathname+u.search))out.push(u.href);
+  }catch{}
+ }
+ return [...new Set(out)];
+}
 
 async function sitemapUrls(start){
  const found=new Set();
  const fetchMap=async(url,depth=0)=>{
   if(depth>2)return;
   try{
-   const res=await fetch(url,{headers:{'user-agent':'Mozilla/5.0','accept':'application/xml,text/xml,*/*'},signal:AbortSignal.timeout(8000),cache:'no-store'});
+   const res=await fetch(url,{headers:{'user-agent':'Mozilla/5.0','accept':'application/xml,text/xml,*/*'},signal:AbortSignal.timeout(3000),cache:'no-store'});
    if(!res.ok)return;
    const xml=await res.text();
    const locs=[...xml.matchAll(/<loc[^>]*>([\s\S]*?)<\/loc>/gi)].map(m=>m[1].replace(/&amp;/g,'&').trim());
@@ -332,11 +344,11 @@ export async function POST(req){
 
   stage='crawl';
   const sitemap=await sitemapUrls(start);
-  const queue=[...candidateUrls(start),...sitemap]; const seen=new Set(); const docs=[]; const failed=[];
+  const queue=[start.href,...sitemap]; const seen=new Set(); const docs=[]; const failed=[];
   const MAX_PAGES=200;
   while(queue.length&&seen.size<MAX_PAGES){
    const batch=[];
-   while(queue.length&&batch.length<5&&seen.size+batch.length<MAX_PAGES){
+   while(queue.length&&batch.length<10&&seen.size+batch.length<MAX_PAGES){
     const target=queue.shift();
     if(!target||seen.has(target)||batch.includes(target))continue;
     batch.push(target);
@@ -346,11 +358,11 @@ export async function POST(req){
    const results=await Promise.all(batch.map(async target=>({target,page:await fetchPage(target)})));
    for(const {target,page} of results){
     if(!page){failed.push(target);continue}
-    docs.push(page);
-    if(page.html){
-     for(const l of internalLinks(page.html,target)){
-      if(!seen.has(l)&&!queue.includes(l)&&queue.length<MAX_PAGES*2)queue.push(l);
-     }
+    const fingerprint=page.text.slice(0,2000);
+    if(!docs.some(d=>d.text.slice(0,2000)===fingerprint))docs.push(page);
+    const links=page.html?internalLinks(page.html,target):internalLinksFromText(page.text,target);
+    for(const l of links){
+     if(!seen.has(l)&&!queue.includes(l)&&queue.length<MAX_PAGES*2)queue.push(l);
     }
    }
   }
