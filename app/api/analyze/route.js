@@ -223,7 +223,7 @@ async function firecrawlFallback(target,debug=false){
     url:target,
     formats:['markdown']
    }),
-   signal:AbortSignal.timeout(7000),
+   signal:AbortSignal.timeout(45000),
    cache:'no-store'
   });
   const raw=await res.text();
