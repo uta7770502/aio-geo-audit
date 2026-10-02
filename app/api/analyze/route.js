@@ -255,6 +255,48 @@ async function firecrawlFallback(target,debug=false,attempt=0){
  }
 }
 
+
+async function firecrawlBatchFallback(targets){
+ try{
+  if(!Array.isArray(targets)||targets.length<2)return null;
+  const rawKey=String(process.env.FIRECRAWL_API_KEY||'');
+  const apiKey=rawKey.replace(/[\u200B-\u200D\u2060\uFEFF\r\n\t]/g,'').trim().replace(/^["']|["']$/g,'').replace(/^Bearer\s+/i,'').trim();
+  if(!apiKey)return null;
+  const headers={'content-type':'application/json','accept':'application/json','authorization':'Bearer '+apiKey};
+  const started=await fetch('https://api.firecrawl.dev/v2/batch/scrape',{
+   method:'POST',headers,
+   body:JSON.stringify({urls:targets,formats:['markdown'],location:{country:'JP',languages:['ja']},maxConcurrency:2}),
+   signal:AbortSignal.timeout(10000),cache:'no-store'
+  });
+  if(!started.ok)return null;
+  const startJson=await started.json();
+  const id=startJson?.id;
+  if(!id)return null;
+  const deadline=Date.now()+32000;
+  while(Date.now()<deadline){
+   await new Promise(resolve=>setTimeout(resolve,1500));
+   const statusRes=await fetch('https://api.firecrawl.dev/v2/batch/scrape/'+encodeURIComponent(id),{
+    headers:{'accept':'application/json','authorization':'Bearer '+apiKey},
+    signal:AbortSignal.timeout(10000),cache:'no-store'
+   });
+   if(!statusRes.ok)return null;
+   const status=await statusRes.json();
+   if(status?.status==='failed'||status?.status==='cancelled')return null;
+   if(status?.status==='completed'){
+    const data=Array.isArray(status.data)?status.data:[];
+    return targets.map(target=>{
+     const item=data.find(x=>x?.metadata?.sourceURL===target)||data.find(x=>{try{return new URL(x?.metadata?.sourceURL).pathname===new URL(target).pathname}catch{return false}});
+     const text=item?.markdown;
+     if(typeof text!=='string'||text.trim().length<100)return null;
+     const sliced=text.slice(0,30000);
+     return {url:target,html:'',text:sliced,fallback:true,source:'firecrawl',score:scorePage('',sliced,true)};
+    });
+   }
+  }
+  return null;
+ }catch{return null}
+}
+
 async function directFetch(target){
  try{
   const res=await fetch(target,{
@@ -359,7 +401,8 @@ export async function POST(req){
    }
    if(!batch.length)break;
    batch.forEach(x=>seen.add(x));
-   const results=await Promise.all(batch.map(async target=>({target,page:await fetchPage(target)})));
+   const batchPages=await firecrawlBatchFallback(batch);
+   const results=batchPages?batch.map((target,i)=>({target,page:batchPages[i]})):await Promise.all(batch.map(async target=>({target,page:await fetchPage(target)})));
    for(const {target,page} of results){
     if(!page){failed.push(target);continue}
     const fingerprint=page.text.slice(0,2000);
