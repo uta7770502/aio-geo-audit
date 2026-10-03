@@ -54,12 +54,19 @@ function visualProfile(doc,start){
  return {logo:logoMatch?abs(logoMatch[1]):'',heroImage:imgs.find(x=>x!==(logoMatch?abs(logoMatch[1]):''))||'',images:[...new Set(imgs)].slice(0,6),accent:usable[0]||'#245c49',secondary:usable[1]||'#eef5f1',source:'現行サイトから抽出'};
 }
 function improvementTargets(docs,start){
- const role=(wanted)=>docs.find(d=>classifyPage(d,start).role===wanted);
- const company=role('company')||docs.find(d=>/会社概要|企業情報|会社名|所在地|代表者|資本金|設立/.test(d.text||''));
- const service=role('service')||docs[0];
- const proof=role('proof')||company||docs[0];
- const faq=role('faq')||service;
- const pack=(d,type,label)=>{if(!d)return null; const text=String(d.text||'').replace(/\\s+/g,' ').trim(); return {type,label,url:d.url,title:(d.html||'').match(/<title[^>]*>(.*?)<\\/title>/is)?.[1]?.replace(/<[^>]+>/g,' ').trim()||label,currentText:text.slice(0,2200),visual:visualProfile(d,start)};};
+ const findRole=(wanted)=>docs.find((d)=>classifyPage(d,start).role===wanted);
+ const company=findRole('company')||docs.find((d)=>/会社概要|企業情報|会社名|所在地|代表者|資本金|設立/.test(d.text||''));
+ const service=findRole('service')||docs[0];
+ const proof=findRole('proof')||company||docs[0];
+ const faq=findRole('faq')||service;
+ function pack(d,type,label){
+  if(!d)return null;
+  const text=String(d.text||'').replace(/\s+/g,' ').trim();
+  let title=label;
+  const m=String(d.html||'').match(/<title[^>]*>([^<]*)<\/title>/i);
+  if(m&&m[1])title=m[1].trim();
+  return {type,label,url:d.url,title,currentText:text.slice(0,2200),visual:visualProfile(d,start)};
+ }
  return {company:pack(company,'company','会社概要・企業情報'),service:pack(service,'service','サービス情報'),proof:pack(proof,'proof','実績・信頼情報'),faq:pack(faq,'faq','FAQ・回答情報')};
 }
 function contentAudit(text='',title='このサイト'){
