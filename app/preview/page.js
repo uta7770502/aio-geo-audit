@@ -3,22 +3,28 @@ import {useEffect,useState} from 'react';
 import '../style.css';
 
 export default function Preview(){
- const [r,setR]=useState(null);
+ const [r,setR]=useState(null); const [mode,setMode]=useState('after');
  useEffect(()=>{try{const x=sessionStorage.getItem('aioGeoPreview');if(x)setR(JSON.parse(x))}catch{}},[]);
- if(!r)return <main className="previewPage"><div className="previewEmpty"><h1>改善後プレビュー</h1><p>先にサイトを診断してから「改善後のサイトをプレビュー」を押してください。</p><button onClick={()=>location.href='/'}>診断画面へ戻る</button></div></main>;
- const audit=Object.fromEntries((r.contentAudit||[]).map(x=>[x.key,x]));
- const company=r.title||(()=>{try{return new URL(r.url).hostname}catch{return 'この企業'}})();
- const service=audit.service?.evidence&&!audit.service.evidence.includes('確認できません')?audit.service.evidence:'提供するサービスの内容と、誰のどんな課題を解決するのかをここで明確に説明します。';
- const proof=audit.trust?.evidence&&!audit.trust.evidence.includes('確認できません')?audit.trust.evidence:'会社情報・実績・運営者情報など、安心して選べる根拠を分かりやすく掲載します。';
- return <main className="previewPage">
-  <div className="previewToolbar"><div><b>改善後プレビュー</b><span>BETA</span><small>診断結果をもとにした仮イメージです。実サイトにはまだ反映されません。</small></div><button onClick={()=>history.back()}>診断結果へ戻る</button></div>
-  <section className="mockSite">
-   <header><b>{company}</b><nav><span>サービス</span><span>選ばれる理由</span><span>実績</span><span>よくある質問</span><button>お問い合わせ</button></nav></header>
-   <section className="mockHero"><div><em>AIにも、人にも、ひと目で伝わるサイトへ</em><h1>{company}のサービス内容と価値を<br/>わかりやすく伝えます。</h1><p>{service}</p><div><button>サービスを見る</button><button className="ghost">お問い合わせ</button></div></div><aside><small>今回の診断スコア</small><strong>{r.score}<i>/100</i></strong><p>改善提案を反映した場合の<br/>情報設計イメージ</p></aside></section>
-   <section className="mockSection"><small>WHAT WE DO</small><h2>何をしている会社なのかを明確に</h2><p>{service}</p><div className="mockCards"><article><b>01</b><h3>サービス内容</h3><p>提供内容・対象ユーザー・得られる価値を、AIが誤解しにくい文章で整理します。</p></article><article><b>02</b><h3>選ばれる理由</h3><p>強みや違いを具体的な根拠とともに掲載し、比較される情報を明確にします。</p></article><article><b>03</b><h3>信頼できる根拠</h3><p>{proof}</p></article></div></section>
-   <section className="mockProof"><div><small>TRUST & EVIDENCE</small><h2>実績・会社情報を、判断材料として見せる</h2><p>{proof}</p></div><div className="proofGrid"><p><b>会社情報</b><span>運営主体を明確に表示</span></p><p><b>実績・事例</b><span>具体的な数字や事例を掲載</span></p><p><b>更新情報</b><span>情報の鮮度を明示</span></p></div></section>
-   <section className="mockFaq"><small>FAQ</small><h2>よくある質問</h2><details open><summary>どのようなサービスですか？</summary><p>{service}</p></details><details><summary>どんな企業・ユーザーに向いていますか？</summary><p>対象となるユーザーと利用シーンを具体的に回答します。</p></details><details><summary>相談や問い合わせはできますか？</summary><p>問い合わせ方法や次の行動を明確に案内します。</p></details></section>
-   <section className="invisibleFix"><b>画面には見えないAIO/GEO改善</b><div><span>✓ Organization / Service 構造化データ</span><span>✓ FAQPage 構造化データ</span><span>✓ title・description最適化</span><span>✓ H1/H2情報構造の整理</span></div></section>
+ if(!r)return <main className="previewPage"><div className="previewEmpty"><h1>改善後プレビュー</h1><p>先にサイトを診断してください。</p><button onClick={()=>location.href='/'}>診断画面へ戻る</button></div></main>;
+ const a=Object.fromEntries((r.contentAudit||[]).map(x=>[x.key,x])); const v=r.visualProfile||{};
+ const company=(r.title||'').split(/[｜|]/)[0]||new URL(r.url).hostname;
+ const service=a.service?.evidence&&!a.service.evidence.includes('確認できません')?a.service.evidence:'誰に、何を提供し、どんな価値がある会社なのかを明確に伝えます。';
+ const proof=a.proof?.evidence&&!a.proof.evidence.includes('確認できません')?a.proof.evidence:'実績・事例・会社情報を具体的な根拠として掲載します。';
+ const before=r.clientGuide?.entity?.siteBefore||service;
+ const style={'--site-accent':v.accent||'#245c49','--site-soft':v.secondary||'#eef5f1'};
+ return <main className="previewPage" style={style}>
+  <div className="previewToolbar"><div><b>リニューアル提案ラフ</b><span>BETA</span><small>診断したサイトの情報・色・素材を使った改善イメージです</small></div><button onClick={()=>history.back()}>診断結果へ戻る</button></div>
+  <div className="previewSwitch"><button className={mode==='before'?'on':''} onClick={()=>setMode('before')}>現行イメージ</button><button className={mode==='after'?'on':''} onClick={()=>setMode('after')}>改善イメージ</button></div>
+  <section className={'renewSite '+mode}>
+   <header>{v.logo?<img src={v.logo} alt={company}/>:<b>{company}</b>}<nav><span>サービス</span><span>会社情報</span><span>実績</span><span>お問い合わせ</span></nav></header>
+   {mode==='before'?<section className="renewHero beforeHero">{v.heroImage&&<img src={v.heroImage} alt=""/>}<div><small>CURRENT SITE</small><h1>{company}</h1><p>{before}</p><button>詳しく見る</button></div></section>:
+   <><section className="renewHero afterHero">{v.heroImage&&<img src={v.heroImage} alt=""/>}<div><label>AIO/GEO 改善 01</label><small>WHO / WHAT / VALUE</small><h1>{company}は、<br/>「何を提供する会社か」が<br/>ひと目で伝わるサイトへ。</h1><p>{service}</p><button>サービス内容を見る</button><i>企業・サービス内容をAIが理解しやすい形に整理</i></div></section>
+   <section className="renewIntro"><div><label>AIO/GEO 改善 02</label><small>SERVICE</small><h2>サービスを、探す人にもAIにも<br/>分かりやすく整理。</h2></div><p>{service}</p></section>
+   <section className="renewCards"><article><b>01</b><h3>何を提供するか</h3><p>サービス内容を短い定義文から始め、詳細へ自然につなげます。</p></article><article><b>02</b><h3>誰のためのサービスか</h3><p>対象顧客と解決できる課題を明確にして、検索意図と結びつけます。</p></article><article><b>03</b><h3>選ばれる根拠</h3><p>{proof}</p></article></section>
+   <section className="renewProof">{v.images?.[1]&&<img src={v.images[1]} alt=""/>}<div><label>AIO/GEO 改善 03</label><small>TRUST / EVIDENCE</small><h2>「実績豊富」ではなく、<br/>信頼できる理由を具体的に。</h2><p>{proof}</p><ul><li>会社・運営者情報を明確化</li><li>実績・事例を具体的な事実で掲載</li><li>問い合わせへの導線を整理</li></ul></div></section>
+   <section className="renewFaq"><label>AIO/GEO 改善 04</label><small>FAQ</small><h2>お客様が知りたいことに、サイト内で答える。</h2><details open><summary>どのようなサービスですか？</summary><p>{service}</p></details><details><summary>どのような相談に対応できますか？</summary><p>対応範囲や対象を具体的に回答することで、AIの回答材料にもなります。</p></details></section>
+   <section className="renewInvisible"><b>さらに、見た目を変えずに裏側も改善</b><span>Organization / Service 構造化データ</span><span>title・description</span><span>H1/H2構造</span><span>FAQPage</span></section></>}
   </section>
+  <div className="renewNote"><b>これは完成デザインではなく「改善したらどう見えるか」の提案ラフです。</b><p>現行サイトのデザイントーンを残しながら、診断で見つかった改善点を画面に落とし込んでいます。</p></div>
  </main>
 }
