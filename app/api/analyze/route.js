@@ -474,7 +474,8 @@ export async function POST(req){
    fetchSources:[...new Set(docs.map(d=>d.source))],
    executiveSummary:executiveSummary(categories,false),
    contentAudit:contentAudit(docs.map(d=>d.text).join(' ').slice(0,120000),firstTitle||start.hostname),
-   clientGuide:Object.fromEntries(Object.entries(categories).map(([k,v])=>{const g=clientExplanation(k,v.score,firstTitle||start.hostname);const sample=siteSamples(docs.map(d=>d.text).join(' ').slice(0,120000),firstTitle||start.hostname);return [k,{...g,siteBefore:sample.source,siteAfter:k==='citation'?sample.citation:sample.improved}]})),\n   improvementTargets:improvementTargets(docs,start),\n   implementationPlan:buildImplementationPlan(categories,false)
+   clientGuide:Object.fromEntries(Object.entries(categories).map(([k,v])=>{const g=clientExplanation(k,v.score,firstTitle||start.hostname);const sample=siteSamples(docs.map(d=>d.text).join(' ').slice(0,120000),firstTitle||start.hostname);return [k,{...g,siteBefore:sample.source,siteAfter:k==='citation'?sample.citation:sample.improved}]})),
+   implementationPlan:buildImplementationPlan(categories,false)
   });
  }catch(e){
   return NextResponse.json({error:`診断処理でエラーが発生しました（${stage}）: ${e?.message||String(e)}`},{status:500});
