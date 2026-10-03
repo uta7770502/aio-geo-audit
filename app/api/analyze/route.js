@@ -391,8 +391,9 @@ export async function POST(req){
   stage='crawl';
   const sitemap=await sitemapUrls(start);
   const queue=[start.href,...sitemap]; const seen=new Set(); const docs=[]; const failed=[];
-  const MAX_PAGES=200;
+  const MAX_PAGES=200; const SOFT_DEADLINE=Date.now()+42000; let timedOut=false;
   while(queue.length&&seen.size<MAX_PAGES){
+   if(Date.now()>SOFT_DEADLINE){timedOut=true;break}
    const batch=[];
    while(queue.length&&batch.length<10&&seen.size+batch.length<MAX_PAGES){
     const target=queue.shift();
@@ -401,7 +402,8 @@ export async function POST(req){
    }
    if(!batch.length)break;
    batch.forEach(x=>seen.add(x));
-   const batchPages=await firecrawlBatchFallback(batch);
+   const remaining=SOFT_DEADLINE-Date.now();
+   const batchPages=remaining>12000?await firecrawlBatchFallback(batch):null;
    const results=batchPages?batch.map((target,i)=>({target,page:batchPages[i]})):await Promise.all(batch.map(async target=>({target,page:await fetchPage(target)})));
    for(const {target,page} of results){
     if(!page){failed.push(target);continue}
@@ -467,8 +469,8 @@ export async function POST(req){
   const usedFallback=docs.some(d=>d.fallback);
 
   return NextResponse.json({
-   url:start.href,title:firstTitle||start.hostname,score,pagesAnalyzed:docs.length,pagesDiscovered:seen.size,pagesFailed:failed.length,complete:failed.length===0&&queue.length===0,pages:docs.map(d=>d.url),pageResults:docs.map(pageDetail),roleCoverage:roleCoverage(docs,start),scoringMethod:'重要ページ加重評価',failedPages:failed.slice(0,50),categories,actions,
-   summary:`${docs.length}ページを取得し、AIO/GEO観点の6カテゴリを診断しました。現時点の総合スコアは ${score}/100 です。${usedFallback?' 一部ページは代替取得経路を使用しました。':''}`,
+   url:start.href,title:firstTitle||start.hostname,score,pagesAnalyzed:docs.length,pagesDiscovered:seen.size+queue.length,pagesFailed:failed.length,complete:!timedOut&&failed.length===0&&queue.length===0,partial:timedOut||queue.length>0,pageLimitReached:seen.size>=MAX_PAGES,pages:docs.map(d=>d.url),pageResults:docs.map(pageDetail),roleCoverage:roleCoverage(docs,start),scoringMethod:'重要ページ加重評価',failedPages:failed.slice(0,50),categories,actions,
+   summary:`${docs.length}ページを取得し、AIO/GEO観点の6カテゴリを診断しました。現時点の総合スコアは ${score}/100 です。${timedOut?' 大規模サイトのため今回は取得できた範囲で一次診断しています。':''}${usedFallback?' 一部ページは代替取得経路を使用しました。':''}`,
    summarySimple:`AIがこのサイトを理解・回答・引用しやすいかを100点満点で確認した結果、${score}点でした。点数が低い項目から直すと、AIに内容が伝わりやすくなります。`,
    fallbackUsed:usedFallback,
    fetchSources:[...new Set(docs.map(d=>d.source))],
