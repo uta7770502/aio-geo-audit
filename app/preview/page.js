@@ -1,30 +1,36 @@
 'use client';
-import {useEffect,useState} from 'react';
+import {useEffect,useMemo,useState} from 'react';
 import '../style.css';
 
+const clean=s=>String(s||'').replace(/\s+/g,' ').trim();
 export default function Preview(){
- const [r,setR]=useState(null); const [mode,setMode]=useState('after');
+ const [r,setR]=useState(null),[tab,setTab]=useState('company');
  useEffect(()=>{try{const x=sessionStorage.getItem('aioGeoPreview');if(x)setR(JSON.parse(x))}catch{}},[]);
- if(!r)return <main className="previewPage"><div className="previewEmpty"><h1>改善後プレビュー</h1><p>先にサイトを診断してください。</p><button onClick={()=>location.href='/'}>診断画面へ戻る</button></div></main>;
- const a=Object.fromEntries((r.contentAudit||[]).map(x=>[x.key,x])); const v=r.visualProfile||{};
- const company=(r.title||'').split(/[｜|]/)[0]||new URL(r.url).hostname;
- const service=a.service?.evidence&&!a.service.evidence.includes('確認できません')?a.service.evidence:'誰に、何を提供し、どんな価値がある会社なのかを明確に伝えます。';
- const proof=a.proof?.evidence&&!a.proof.evidence.includes('確認できません')?a.proof.evidence:'実績・事例・会社情報を具体的な根拠として掲載します。';
- const before=r.clientGuide?.entity?.siteBefore||service;
- const style={'--site-accent':v.accent||'#245c49','--site-soft':v.secondary||'#eef5f1'};
+ const data=useMemo(()=>r?.improvementTargets||{},[r]);
+ if(!r)return <main className="previewPage"><div className="previewEmpty"><h1>改善ラフ</h1><p>先にサイトを診断してください。</p><button onClick={()=>location.href='/'}>診断画面へ戻る</button></div></main>;
+ const target=data[tab]||data.company||data.service; const v=target?.visual||r.visualProfile||{};
+ const company=(r.title||'').split(/[｜|]/)[0]||'この会社'; const raw=clean(target?.currentText);
+ const intro=tab==='company'?company+'が「誰に、何を提供している会社なのか」を会社情報の冒頭で明確にします。':tab==='service'?'サービスの対象・提供内容・得られる価値を、ページ冒頭で短く明確に説明します。':tab==='proof'?'実績や取引情報を、信頼できる具体的な根拠として整理して掲載します。':'実際によく聞かれる質問に、結論から短く答える構成へ整理します。';
+ const rows=raw.match(/(?:会社名|設立|所在地|本社所在地|代表|役員|資本金|取引銀行|主な取引先|加盟団体|認証資格|海外拠点)[^。]{0,180}/g)?.slice(0,10)||[];
+ const style={'--site-accent':v.accent||'#087fa5','--site-soft':v.secondary||'#e7f3f7'};
  return <main className="previewPage" style={style}>
-  <div className="previewToolbar"><div><b>リニューアル提案ラフ</b><span>BETA</span><small>診断したサイトの情報・色・素材を使った改善イメージです</small></div><button onClick={()=>history.back()}>診断結果へ戻る</button></div>
-  <div className="previewSwitch"><button className={mode==='before'?'on':''} onClick={()=>setMode('before')}>現行イメージ</button><button className={mode==='after'?'on':''} onClick={()=>setMode('after')}>改善イメージ</button></div>
-  <section className={'renewSite '+mode}>
-   <header>{v.logo?<img src={v.logo} alt={company}/>:<b>{company}</b>}<nav><span>サービス</span><span>会社情報</span><span>実績</span><span>お問い合わせ</span></nav></header>
-   {mode==='before'?<section className="renewHero beforeHero">{v.heroImage&&<img src={v.heroImage} alt=""/>}<div><small>CURRENT SITE</small><h1>{company}</h1><p>{before}</p><button>詳しく見る</button></div></section>:
-   <><section className="renewHero afterHero">{v.heroImage&&<img src={v.heroImage} alt=""/>}<div><label>AIO/GEO 改善 01</label><small>WHO / WHAT / VALUE</small><h1>{company}は、<br/>「何を提供する会社か」が<br/>ひと目で伝わるサイトへ。</h1><p>{service}</p><button>サービス内容を見る</button><i>企業・サービス内容をAIが理解しやすい形に整理</i></div></section>
-   <section className="renewIntro"><div><label>AIO/GEO 改善 02</label><small>SERVICE</small><h2>サービスを、探す人にもAIにも<br/>分かりやすく整理。</h2></div><p>{service}</p></section>
-   <section className="renewCards"><article><b>01</b><h3>何を提供するか</h3><p>サービス内容を短い定義文から始め、詳細へ自然につなげます。</p></article><article><b>02</b><h3>誰のためのサービスか</h3><p>対象顧客と解決できる課題を明確にして、検索意図と結びつけます。</p></article><article><b>03</b><h3>選ばれる根拠</h3><p>{proof}</p></article></section>
-   <section className="renewProof">{v.images?.[1]&&<img src={v.images[1]} alt=""/>}<div><label>AIO/GEO 改善 03</label><small>TRUST / EVIDENCE</small><h2>「実績豊富」ではなく、<br/>信頼できる理由を具体的に。</h2><p>{proof}</p><ul><li>会社・運営者情報を明確化</li><li>実績・事例を具体的な事実で掲載</li><li>問い合わせへの導線を整理</li></ul></div></section>
-   <section className="renewFaq"><label>AIO/GEO 改善 04</label><small>FAQ</small><h2>お客様が知りたいことに、サイト内で答える。</h2><details open><summary>どのようなサービスですか？</summary><p>{service}</p></details><details><summary>どのような相談に対応できますか？</summary><p>対応範囲や対象を具体的に回答することで、AIの回答材料にもなります。</p></details></section>
-   <section className="renewInvisible"><b>さらに、見た目を変えずに裏側も改善</b><span>Organization / Service 構造化データ</span><span>title・description</span><span>H1/H2構造</span><span>FAQPage</span></section></>}
+  <div className="previewToolbar"><div><b>この部分を直すと、こう変わります</b><span>BETA</span><small>診断した実ページをもとにした改善ラフ</small></div><button onClick={()=>history.back()}>診断結果へ戻る</button></div>
+  <div className="targetTabs">{[['company','会社概要'],['service','サービス'],['proof','実績・信頼'],['faq','FAQ']].map(([k,n])=><button key={k} className={tab===k?'on':''} onClick={()=>setTab(k)}>{n}</button>)}</div>
+  <section className="compareWrap">
+   <article className="comparePane currentPane"><div className="compareLabel">BEFORE <b>現行</b></div><div className="currentMock"><h2>{target?.title||'現行ページ'}</h2><p>{raw.slice(0,1200)||'現行ページの本文を取得できませんでした。'}</p></div></article>
+   <div className="compareArrow">↓</div>
+   <article className="comparePane improvedPane"><div className="compareLabel">AFTER <b>改善ラフ</b></div>
+    <div className="roughPage">
+     <div className="roughTitle"><small>{tab==='company'?'COMPANY':tab==='service'?'SERVICE':tab==='proof'?'TRUST & RESULTS':'FAQ'}</small><h2>{target?.label||'改善イメージ'}</h2></div>
+     <div className="aioPatch"><span>AIO/GEO 改善</span><h3>{tab==='company'?company+'について':tab==='service'?'サービス内容をひと目で理解できるように':tab==='proof'?'信頼できる根拠を分かりやすく':'よくある質問に直接答える'}</h3><p>{intro}</p><i>文章を追加・整理することで、閲覧者にもAIにも内容が伝わりやすくなります。</i></div>
+     {tab==='company'&&<div className="companyRough"><h3>会社情報</h3>{rows.length?rows.map((x,i)=><div className="companyRow" key={i}><b>{x.split(/\s/)[0]}</b><p>{x}</p></div>):<><div className="companyRow"><b>会社名</b><p>{company}</p></div><div className="companyRow"><b>事業内容</b><p>提供サービスと対応領域を具体的に記載</p></div><div className="companyRow"><b>実績</b><p>主要取引先・実績など信頼材料を整理</p></div></>}</div>}
+     {tab==='service'&&<div className="roughCards"><div><b>01</b><h3>対象</h3><p>誰のためのサービスか</p></div><div><b>02</b><h3>提供内容</h3><p>何を提供するのか</p></div><div><b>03</b><h3>価値</h3><p>何が解決できるのか</p></div></div>}
+     {tab==='proof'&&<div className="roughCards"><div><b>実績</b><p>件数・年数・事例を具体化</p></div><div><b>主要取引</b><p>信頼につながる一次情報</p></div><div><b>会社情報</b><p>運営主体を明確に</p></div></div>}
+     {tab==='faq'&&<div className="roughFaq"><b>Q. どのような相談に対応していますか？</b><p>A. 対応範囲を最初に結論で答え、その後に条件や詳細を説明します。</p></div>}
+     <div className="codePatch"><b>画面の裏側でも改善</b><span>構造化データ</span><span>title / description</span><span>見出し構造</span></div>
+    </div>
+   </article>
   </section>
-  <div className="renewNote"><b>これは完成デザインではなく「改善したらどう見えるか」の提案ラフです。</b><p>現行サイトのデザイントーンを残しながら、診断で見つかった改善点を画面に落とし込んでいます。</p></div>
+  <div className="renewNote"><b>ポイント</b><p>完成デザインではなく、現行ページの情報とトーンを残したまま「コード・文章・レイアウトを直すとどう変わるか」を見せる提案ラフです。</p></div>
  </main>
 }
