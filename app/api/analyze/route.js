@@ -53,6 +53,15 @@ function visualProfile(doc,start){
  const usable=colors.filter(x=>!['#ffffff','#000000','#fefefe','#fafafa','#f5f5f5'].includes(x));
  return {logo:logoMatch?abs(logoMatch[1]):'',heroImage:imgs.find(x=>x!==(logoMatch?abs(logoMatch[1]):''))||'',images:[...new Set(imgs)].slice(0,6),accent:usable[0]||'#245c49',secondary:usable[1]||'#eef5f1',source:'現行サイトから抽出'};
 }
+function improvementTargets(docs,start){
+ const role=(wanted)=>docs.find(d=>classifyPage(d,start).role===wanted);
+ const company=role('company')||docs.find(d=>/会社概要|企業情報|会社名|所在地|代表者|資本金|設立/.test(d.text||''));
+ const service=role('service')||docs[0];
+ const proof=role('proof')||company||docs[0];
+ const faq=role('faq')||service;
+ const pack=(d,type,label)=>{if(!d)return null; const text=String(d.text||'').replace(/\\s+/g,' ').trim(); return {type,label,url:d.url,title:(d.html||'').match(/<title[^>]*>(.*?)<\\/title>/is)?.[1]?.replace(/<[^>]+>/g,' ').trim()||label,currentText:text.slice(0,2200),visual:visualProfile(d,start)};};
+ return {company:pack(company,'company','会社概要・企業情報'),service:pack(service,'service','サービス情報'),proof:pack(proof,'proof','実績・信頼情報'),faq:pack(faq,'faq','FAQ・回答情報')};
+}
 function contentAudit(text='',title='このサイト'){
  const t=String(text).replace(/\s+/g,' ').trim();
  const sentences=t.split(/(?<=[。！？!?])/).map(x=>x.trim()).filter(x=>x.length>=12&&x.length<=220);
@@ -484,7 +493,7 @@ export async function POST(req){
    executiveSummary:executiveSummary(categories,false),
    contentAudit:contentAudit(docs.map(d=>d.text).join(' ').slice(0,120000),firstTitle||start.hostname),
    clientGuide:Object.fromEntries(Object.entries(categories).map(([k,v])=>{const g=clientExplanation(k,v.score,firstTitle||start.hostname);const sample=siteSamples(docs.map(d=>d.text).join(' ').slice(0,120000),firstTitle||start.hostname);return [k,{...g,siteBefore:sample.source,siteAfter:k==='citation'?sample.citation:sample.improved}]})),
-   visualProfile:visualProfile(docs[0],start),\n   implementationPlan:buildImplementationPlan(categories,false)
+   visualProfile:visualProfile(docs[0],start),\n   improvementTargets:improvementTargets(docs,start),\n   implementationPlan:buildImplementationPlan(categories,false)
   });
  }catch(e){
   return NextResponse.json({error:`診断処理でエラーが発生しました（${stage}）: ${e?.message||String(e)}`},{status:500});
