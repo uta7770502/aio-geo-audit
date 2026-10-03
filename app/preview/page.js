@@ -8,8 +8,8 @@ export default function Preview(){
  useEffect(()=>{try{const x=sessionStorage.getItem('aioGeoPreview');if(x)setR(JSON.parse(x))}catch{}},[]);
  const data=useMemo(()=>r?.improvementTargets||{},[r]);
  if(!r)return <main className="previewPage"><div className="previewEmpty"><h1>改善ラフ</h1><p>先にサイトを診断してください。</p><button onClick={()=>location.href='/'}>診断画面へ戻る</button></div></main>;
- const target=data[tab]||data.company||data.service; const v=target?.visual||r.visualProfile||{};
- const company=(r.title||'').split(/[｜|]/)[0]||'この会社'; const raw=clean(target?.currentText);
+ const pickPage=(kind)=>{const list=r?.pageResults||[]; const roleMap={company:'company',service:'service',proof:'proof',faq:'faq'}; return list.find(p=>p.role===roleMap[kind])||list.find(p=>{const s=((p.title||'')+' '+(p.url||'')).toLowerCase();return kind==='company'?/company|about|会社|企業/.test(s):kind==='service'?/service|business|solution|事業|サービス/.test(s):kind==='proof'?/works|case|result|実績|事例/.test(s):/faq|question|よくある質問/.test(s)})||null};\n const page=pickPage(tab); const target=data[tab]||page||null; const v=target?.visual||r.visualProfile||{};
+ const company=(r.title||'').split(/[｜|]/)[0]||'この会社'; const raw=clean(target?.currentText||page?.textSample||page?.evidence||'');
  const intro=tab==='company'?company+'が「誰に、何を提供している会社なのか」を会社情報の冒頭で明確にします。':tab==='service'?'サービスの対象・提供内容・得られる価値を、ページ冒頭で短く明確に説明します。':tab==='proof'?'実績や取引情報を、信頼できる具体的な根拠として整理して掲載します。':'実際によく聞かれる質問に、結論から短く答える構成へ整理します。';
  const rows=raw.match(/(?:会社名|設立|所在地|本社所在地|代表|役員|資本金|取引銀行|主な取引先|加盟団体|認証資格|海外拠点)[^。]{0,180}/g)?.slice(0,10)||[];
  const style={'--site-accent':v.accent||'#087fa5','--site-soft':v.secondary||'#e7f3f7'};
@@ -17,7 +17,7 @@ export default function Preview(){
   <div className="previewToolbar"><div><b>この部分を直すと、こう変わります</b><span>BETA</span><small>診断した実ページをもとにした改善ラフ</small></div><button onClick={()=>history.back()}>診断結果へ戻る</button></div>
   <div className="targetTabs">{[['company','会社概要'],['service','サービス'],['proof','実績・信頼'],['faq','FAQ']].map(([k,n])=><button key={k} className={tab===k?'on':''} onClick={()=>setTab(k)}>{n}</button>)}</div>
   <section className="compareWrap">
-   <article className="comparePane currentPane"><div className="compareLabel">BEFORE <b>現行</b></div><div className="currentMock"><h2>{target?.title||'現行ページ'}</h2><p>{raw.slice(0,1200)||'現行ページの本文を取得できませんでした。'}</p></div></article>
+   <article className="comparePane currentPane"><div className="compareLabel">BEFORE <b>現行</b></div><div className="currentMock"><h2>{page?.title||target?.title||'現行ページ'}</h2><small className="sourceUrl">{page?.url||target?.url||''}</small><p>{raw.slice(0,1200)||'この診断結果には本文データが保存されていません。下の改善ラフは診断項目をもとに表示しています。'}</p></div></article>
    <div className="compareArrow">↓</div>
    <article className="comparePane improvedPane"><div className="compareLabel">AFTER <b>改善ラフ</b></div>
     <div className="roughPage">
