@@ -1,24 +1,24 @@
 'use client';
 import {useEffect,useState} from 'react';
 import '../style.css';
-
+const txt=s=>String(s||'').replace(/\s+/g,' ').trim();
 export default function Preview(){
- const [r,setR]=useState(null);
+ const [r,setR]=useState(null),[tab,setTab]=useState('company');
  useEffect(()=>{try{const x=sessionStorage.getItem('aioGeoPreview');if(x)setR(JSON.parse(x))}catch{}},[]);
- if(!r)return <main className="previewPage"><div className="previewEmpty"><h1>改善後プレビュー</h1><p>先にサイトを診断してから「改善後のサイトをプレビュー」を押してください。</p><button onClick={()=>location.href='/'}>診断画面へ戻る</button></div></main>;
- const audit=Object.fromEntries((r.contentAudit||[]).map(x=>[x.key,x]));
- const company=r.title||(()=>{try{return new URL(r.url).hostname}catch{return 'この企業'}})();
- const service=audit.service?.evidence&&!audit.service.evidence.includes('確認できません')?audit.service.evidence:'提供するサービスの内容と、誰のどんな課題を解決するのかをここで明確に説明します。';
- const proof=audit.trust?.evidence&&!audit.trust.evidence.includes('確認できません')?audit.trust.evidence:'会社情報・実績・運営者情報など、安心して選べる根拠を分かりやすく掲載します。';
- return <main className="previewPage">
-  <div className="previewToolbar"><div><b>改善後プレビュー</b><span>BETA</span><small>診断結果をもとにした仮イメージです。実サイトにはまだ反映されません。</small></div><button onClick={()=>history.back()}>診断結果へ戻る</button></div>
-  <section className="mockSite">
-   <header><b>{company}</b><nav><span>サービス</span><span>選ばれる理由</span><span>実績</span><span>よくある質問</span><button>お問い合わせ</button></nav></header>
-   <section className="mockHero"><div><em>AIにも、人にも、ひと目で伝わるサイトへ</em><h1>{company}のサービス内容と価値を<br/>わかりやすく伝えます。</h1><p>{service}</p><div><button>サービスを見る</button><button className="ghost">お問い合わせ</button></div></div><aside><small>今回の診断スコア</small><strong>{r.score}<i>/100</i></strong><p>改善提案を反映した場合の<br/>情報設計イメージ</p></aside></section>
-   <section className="mockSection"><small>WHAT WE DO</small><h2>何をしている会社なのかを明確に</h2><p>{service}</p><div className="mockCards"><article><b>01</b><h3>サービス内容</h3><p>提供内容・対象ユーザー・得られる価値を、AIが誤解しにくい文章で整理します。</p></article><article><b>02</b><h3>選ばれる理由</h3><p>強みや違いを具体的な根拠とともに掲載し、比較される情報を明確にします。</p></article><article><b>03</b><h3>信頼できる根拠</h3><p>{proof}</p></article></div></section>
-   <section className="mockProof"><div><small>TRUST & EVIDENCE</small><h2>実績・会社情報を、判断材料として見せる</h2><p>{proof}</p></div><div className="proofGrid"><p><b>会社情報</b><span>運営主体を明確に表示</span></p><p><b>実績・事例</b><span>具体的な数字や事例を掲載</span></p><p><b>更新情報</b><span>情報の鮮度を明示</span></p></div></section>
-   <section className="mockFaq"><small>FAQ</small><h2>よくある質問</h2><details open><summary>どのようなサービスですか？</summary><p>{service}</p></details><details><summary>どんな企業・ユーザーに向いていますか？</summary><p>対象となるユーザーと利用シーンを具体的に回答します。</p></details><details><summary>相談や問い合わせはできますか？</summary><p>問い合わせ方法や次の行動を明確に案内します。</p></details></section>
-   <section className="invisibleFix"><b>画面には見えないAIO/GEO改善</b><div><span>✓ Organization / Service 構造化データ</span><span>✓ FAQPage 構造化データ</span><span>✓ title・description最適化</span><span>✓ H1/H2情報構造の整理</span></div></section>
-  </section>
- </main>
+ if(!r)return <main className="previewPage"><div className="previewEmpty"><h1>改善ラフ</h1><p>先にサイトを診断してください。</p><button onClick={()=>location.href='/'}>診断画面へ戻る</button></div></main>;
+ const pages=r.pageResults||[];
+ const rules={company:/company|about|profile|corporate|会社|企業/,service:/service|business|solution|product|事業|サービス|製品/,proof:/case|works|result|portfolio|実績|事例|導入/,faq:/faq|question|よくある質問|q&a/};
+ const role={company:'company',service:'service',proof:'proof',faq:'faq'}[tab];
+ const page=pages.find(x=>x.role===role)||pages.find(x=>rules[tab].test(((x.title||'')+' '+(x.url||'')).toLowerCase()))||pages[0];
+ const raw=txt(page?.textSample); const company=(r.title||'この会社').split(/[｜|]/)[0];
+ const labels={company:['COMPANY','会社概要','会社の正体を、最初に伝える'],service:['SERVICE','サービス','誰に何を提供するかを、ひと目で伝える'],proof:['TRUST & RESULTS','実績・信頼情報','選ばれる根拠を、事実で伝える'],faq:['FAQ','よくある質問','顧客の疑問に、その場で答える']}; const L=labels[tab];
+ return <main className="previewPage"><div className="previewToolbar"><div><b>この部分を直すと、こう変わります</b><span>BETA</span><small>診断した実ページを使った改善ラフ</small></div><button onClick={()=>history.back()}>診断結果へ戻る</button></div>
+ <div className="targetTabs">{Object.entries({company:'会社概要',service:'サービス',proof:'実績・信頼',faq:'FAQ'}).map(([k,n])=><button key={k} className={tab===k?'on':''} onClick={()=>setTab(k)}>{n}</button>)}</div>
+ <section className="compareWrap"><article className="comparePane currentPane"><div className="compareLabel">BEFORE <b>現行</b></div><div className="currentMock"><small>{page?.roleLabel||'診断ページ'}</small><h2>{page?.title||'現行ページ'}</h2><i>{page?.url}</i><p>{raw||'このページの本文は取得できませんでした。'}</p></div></article><div className="compareArrow">↓</div>
+ <article className="comparePane improvedPane"><div className="compareLabel">AFTER <b>改善ラフ</b></div><div className="roughPage"><div className="roughTitle"><small>{L[0]}</small><h2>{L[1]}</h2></div><div className="aioPatch"><span>AIO/GEO 改善</span><h3>{L[2]}</h3><p>{tab==='company'?company+'が何をする会社で、誰にどんな価値を提供しているのかを1〜2文で明確にします。':tab==='service'?'対象顧客・提供内容・対応範囲・得られる価値を、最初に短く整理します。':tab==='proof'?'主要取引先・事例・数字・受賞歴などを、信頼できる根拠として整理します。':'料金・納期・対応範囲・依頼方法など、実際に聞かれる質問へ結論から答えます。'}</p></div>
+ {tab==='company'&&<div className="companyRough"><h3>{company}について</h3><div className="companyRow"><b>事業内容</b><p>何を提供する会社かを明確に記載</p></div><div className="companyRow"><b>会社情報</b><p>所在地・代表者・設立・資本金などを整理</p></div><div className="companyRow"><b>信頼情報</b><p>主要取引先・加盟団体・認証・実績を判断材料として整理</p></div></div>}
+ {tab==='service'&&<div className="roughCards"><div><b>01</b><h3>対象</h3><p>誰向けか</p></div><div><b>02</b><h3>提供内容</h3><p>何をするか</p></div><div><b>03</b><h3>価値</h3><p>何が解決できるか</p></div></div>}
+ {tab==='proof'&&<div className="roughCards"><div><b>実績</b><p>具体的な事例・件数</p></div><div><b>取引先</b><p>信頼性を示す一次情報</p></div><div><b>成果</b><p>数字で示せる結果</p></div></div>}
+ {tab==='faq'&&<div className="roughFaq"><b>Q. どのような相談に対応していますか？</b><p>A. 対応範囲を最初に結論で回答し、その後に条件や詳細を説明します。</p></div>}
+ <div className="codePatch"><b>画面の裏側でも改善</b><span>構造化データ</span><span>title / description</span><span>H1 / H2整理</span></div></div></article></section></main>
 }
