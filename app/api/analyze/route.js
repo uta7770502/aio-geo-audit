@@ -215,7 +215,7 @@ function pageDetail(d){
  if(!hasFaq)issues.push('必要に応じて具体的なFAQを追加する');
  if(!hasTrust)issues.push('運営者・実績など信頼情報への導線を明確にする');
  const role=classifyPage(d);
- return {url:d.url,title,score,categories:d.score,source:d.source,role:role.role,roleLabel:role.label,weight:role.weight,checks:{h1,description:hasDescription,schema:hasSchema,faq:hasFaq,trust:hasTrust},issues:issues.slice(0,5)};
+ return {url:d.url,title,score,categories:d.score,source:d.source,role:role.role,roleLabel:role.label,weight:role.weight,textSample:String(text).replace(/\\s+/g,' ').trim().slice(0,2600),checks:{h1,description:hasDescription,schema:hasSchema,faq:hasFaq,trust:hasTrust},issues:issues.slice(0,5)};
 }
 async function firecrawlFallback(target,debug=false,attempt=0){
  try{
