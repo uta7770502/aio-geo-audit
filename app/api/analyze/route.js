@@ -44,6 +44,15 @@ function scorePage(html,text,fallback=false){
  }
 }
 
+function visualProfile(doc,start){
+ const html=doc?.html||''; const base=doc?.url||start.href;
+ const abs=(x)=>{try{return new URL(x,base).href}catch{return ''}};
+ const imgs=[...html.matchAll(/<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*>/gi)].map(m=>abs(m[1])).filter(x=>/^https?:/i.test(x));
+ const logoMatch=html.match(/<img[^>]+(?:class|id|alt)=["'][^"']*logo[^"']*["'][^>]+(?:src|data-src)=["']([^"']+)["']/i)||html.match(/<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]+(?:class|id|alt)=["'][^"']*logo[^"']*["']/i);
+ const colors=[...html.matchAll(/#[0-9a-fA-F]{6}\b/g)].map(m=>m[0].toLowerCase());
+ const usable=colors.filter(x=>!['#ffffff','#000000','#fefefe','#fafafa','#f5f5f5'].includes(x));
+ return {logo:logoMatch?abs(logoMatch[1]):'',heroImage:imgs.find(x=>x!==(logoMatch?abs(logoMatch[1]):''))||'',images:[...new Set(imgs)].slice(0,6),accent:usable[0]||'#245c49',secondary:usable[1]||'#eef5f1',source:'現行サイトから抽出'};
+}
 function contentAudit(text='',title='このサイト'){
  const t=String(text).replace(/\s+/g,' ').trim();
  const sentences=t.split(/(?<=[。！？!?])/).map(x=>x.trim()).filter(x=>x.length>=12&&x.length<=220);
@@ -475,7 +484,7 @@ export async function POST(req){
    executiveSummary:executiveSummary(categories,false),
    contentAudit:contentAudit(docs.map(d=>d.text).join(' ').slice(0,120000),firstTitle||start.hostname),
    clientGuide:Object.fromEntries(Object.entries(categories).map(([k,v])=>{const g=clientExplanation(k,v.score,firstTitle||start.hostname);const sample=siteSamples(docs.map(d=>d.text).join(' ').slice(0,120000),firstTitle||start.hostname);return [k,{...g,siteBefore:sample.source,siteAfter:k==='citation'?sample.citation:sample.improved}]})),
-   implementationPlan:buildImplementationPlan(categories,false)
+   visualProfile:visualProfile(docs[0],start),\n   implementationPlan:buildImplementationPlan(categories,false)
   });
  }catch(e){
   return NextResponse.json({error:`診断処理でエラーが発生しました（${stage}）: ${e?.message||String(e)}`},{status:500});
