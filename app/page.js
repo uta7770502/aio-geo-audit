@@ -10,14 +10,16 @@ export default function Page(){
  async function analyze(){
   setLoading(true);setErr('');setR(null);setProgress({phase:'discover',done:0,total:0});
   try{
+   const requested=String(url||'').trim(); let saved=null;
+   try{saved=JSON.parse(localStorage.getItem('aioGeoActiveAudit')||'null');if(saved?.input!==requested)saved=null}catch{}
    const dr=await fetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:String(url||'').trim()}),cache:'no-store'}); const dj=await dr.json(); if(!dr.ok)throw new Error(dj.error||'ページ探索に失敗しました');
-   const urls=dj.urls||[]; const total=urls.length; setProgress({phase:'analyze',done:0,total});
-   const all=[]; const failed=[]; const size=20;
-   for(let i=0;i<urls.length;i+=size){
+   const urls=dj.urls||[]; const total=urls.length; const all=Array.isArray(saved?.all)?saved.all:[]; const failed=Array.isArray(saved?.failed)?saved.failed:[]; const size=20; const startAt=Math.min(Number(saved?.nextIndex)||0,total); setProgress({phase:'analyze',done:startAt,total});
+   for(let i=startAt;i<urls.length;i+=size){
     const chunk=urls.slice(i,i+size); let bj=null;
     for(let retry=0;retry<2;retry++){try{const br=await fetch('/api/analyze-batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({urls:chunk}),cache:'no-store'});bj=await br.json();if(br.ok)break}catch{} if(retry===0)await new Promise(x=>setTimeout(x,700));}
     if(!bj?.results)failed.push(...chunk); else {all.push(...bj.results.filter(x=>x.ok));failed.push(...(bj.failed||[]));}
-    setProgress({phase:'analyze',done:Math.min(i+chunk.length,total),total});
+    const nextIndex=Math.min(i+chunk.length,total); setProgress({phase:'analyze',done:nextIndex,total});
+    try{localStorage.setItem('aioGeoActiveAudit',JSON.stringify({input:requested,url:dj.url,total,nextIndex,all:all.map(x=>({...x,textSample:String(x.textSample||'').slice(0,500)})),failed:[...new Set(failed)],savedAt:new Date().toISOString()}))}catch{}
    }
    if(failed.length){
     setProgress({phase:'retry',done:total-failed.length,total});
@@ -32,7 +34,7 @@ export default function Page(){
    const score=Math.round(keys.reduce((a,k)=>a+categories[k].score,0)/keys.length); const title=all[0]?.title||dj.url;
    const data={url:dj.url,title,score,pagesAnalyzed:all.length,pagesDiscovered:total,pagesFailed:failed.length,complete:failed.length===0,pages:all.map(x=>x.url),pageResults:all.map(x=>({url:x.url,title:x.title,score:Math.round(keys.reduce((a,k)=>a+(x.categories?.[k]||0),0)/keys.length),categories:x.categories,textSample:x.textSample,role:'other',roleLabel:'診断ページ',issues:[]})),failedPages:failed,categories,actions:['低スコアのページからtitle・description・H1を整理する','ページ内容に合う構造化データを実装する','会社情報・実績・FAQなど一次情報を充実させる'],summary:failed.length?`${total}ページを発見し、${all.length}ページを診断しました。${failed.length}ページは再試行後も取得できませんでした。総合スコアは ${score}/100 です。`:`${total}ページを発見し、全${all.length}ページの診断が完了しました。総合スコアは ${score}/100 です。`,summarySimple:`公開ページ全体をページ単位で確認した結果、AI検索への対応度は${score}点でした。`};
    try{const key='aioGeoHistory:'+new URL(data.url).hostname;const old=localStorage.getItem(key);setPrevious(old?JSON.parse(old):null);localStorage.setItem(key,JSON.stringify({score:data.score,categories:data.categories,date:new Date().toISOString(),url:data.url}));}catch{setPrevious(null)}
-   setR(data);
+   setR(data); try{localStorage.removeItem('aioGeoActiveAudit')}catch{}
   }catch(e){setErr(e?.message||String(e))}finally{setLoading(false)}
  }
 
