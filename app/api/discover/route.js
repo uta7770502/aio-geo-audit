@@ -3,7 +3,7 @@ export const maxDuration=60;
 async function sitemapUrls(start){
  const found=new Set();
  const fetchMap=async(url,depth=0)=>{
-  if(depth>2)return;
+  if(depth>5)return;
   try{
    const res=await fetch(url,{headers:{'user-agent':'Mozilla/5.0','accept':'application/xml,text/xml,*/*'},signal:AbortSignal.timeout(3000),cache:'no-store'});
    if(!res.ok)return;
