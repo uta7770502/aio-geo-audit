@@ -1,0 +1,14 @@
+'use client';
+import {useEffect,useMemo,useState} from 'react';
+import '../style.css';
+export default function HitMeasure(){
+ const [data,setData]=useState(null),[selected,setSelected]=useState([]),[period,setPeriod]=useState('1');
+ useEffect(()=>{try{const d=JSON.parse(sessionStorage.getItem('aioGeoHitSetup')||'null');setData(d);if(d?.url){const h=new URL(d.url).hostname;const s=JSON.parse(localStorage.getItem('aioHitMeasure:'+h)||'null');if(s){setSelected(s.selected||[]);setPeriod(s.period||'1')}}}catch{}},[]);
+ const themes=useMemo(()=>{if(!data)return[];const raw=[data.title,...(data.pageResults||[]).map(x=>x.title),...(data.actions||[])].filter(Boolean).join(' ');const words=raw.replace(/[｜|–—:：／/()（）【】]/g,' ').split(/\s+/).filter(x=>x.length>=2&&x.length<=18&&!/ホーム|トップ|会社概要|お問い合わせ|サイト|ページ|改善|診断|株式会社|有限会社/.test(x));return [...new Set(words)].slice(0,6)},[data]);
+ const topic=themes[0]||data?.title?.split(/[｜|]/)[0]||'このサービス';
+ const candidates=[`${topic}でおすすめの会社は？`,`${topic}に強い会社を教えて`,`${topic}の実績が豊富な会社は？`,`${topic}を依頼するならどこ？`,`${topic}に対応できる会社を比較して`,`${topic}で評判のいい会社は？`,`${topic}を安心して任せられる会社は？`,`${topic}の専門会社を教えて`,`${topic}の相談ができる会社は？`,`${topic}で信頼できる会社は？`];
+ function toggle(q){setSelected(s=>s.includes(q)?s.filter(x=>x!==q):s.length<10?[...s,q]:s)}
+ function save(){if(selected.length<5)return alert('5問以上選択してください');try{const h=new URL(data.url).hostname;localStorage.setItem('aioHitMeasure:'+h,JSON.stringify({selected,period,createdAt:new Date().toISOString(),url:data.url}));alert('ヒット測定の設定を保存しました')}catch{}}
+ if(!data)return <main className="hitPage"><p>診断結果から「AI検索 ヒット測定」を開いてください。</p></main>;
+ return <main className="hitPage"><button className="hitBack" onClick={()=>history.back()}>← 診断結果へ戻る</button><section className="hitHero"><div className="eyebrow">AI SEARCH HIT CHECK</div><h1>AI検索 ヒット測定</h1><p>1〜3ヶ月、同じ質問でAI検索を定点観測。<br/><b>「自社がAIの回答にどれだけ登場するようになったか」</b>を比較します。</p></section><section className="hitSetup"><div className="hitStep"><span>01</span><div><h2>測定期間を選ぶ</h2><div className="periodChoices">{['1','2','3'].map(x=><button key={x} className={period===x?'on':''} onClick={()=>setPeriod(x)}>{x}ヶ月</button>)}</div></div></div><div className="hitStep"><span>02</span><div><h2>AI検索で測る質問を5〜10個選ぶ</h2><p>自由入力ではなく、AI検索で比較しやすい質問パターンを自動で用意しています。</p><div className="themeTags">{themes.map(x=><i key={x}>{x}</i>)}</div><div className="candidateList">{candidates.map((q,i)=><button key={q} className={selected.includes(q)?'on':''} onClick={()=>toggle(q)}><i>{selected.includes(q)?'✓':'+'}</i><span>{q}</span><small>{i<3?'おすすめ':''}</small></button>)}</div><div className="selectCount"><b>{selected.length}</b>/10問 選択中 <small>5問以上選んでください</small></div></div></div><div className="hitStep"><span>03</span><div><h2>測定する内容</h2><div className="measureItems"><b>会社名の登場</b><b>おすすめ掲載</b><b>自社サイトの引用</b><b>競合との比較</b></div></div></div><button className="saveHit" onClick={save}>この内容でヒット測定を設定</button></section></main>
+}
