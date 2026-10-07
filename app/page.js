@@ -7,33 +7,41 @@ export default function Page(){
  const [url,setUrl]=useState(''); const [loading,setLoading]=useState(false); const [progress,setProgress]=useState(null); const [r,setR]=useState(null); const [err,setErr]=useState(''); const [code,setCode]=useState(null); const [loadStep,setLoadStep]=useState(0); const [previous,setPrevious]=useState(null);
  const loadSteps=['サイトへアクセスしています','企業・サービス内容を確認しています','ページ構造を読み取っています','構造化データを確認しています','FAQ・信頼情報を確認しています','AIに引用されやすいか分析しています','診断レポートをまとめています'];
  useEffect(()=>{if(!loading){setLoadStep(0);return}const id=setInterval(()=>setLoadStep(s=>Math.min(s+1,loadSteps.length-1)),2200);return()=>clearInterval(id)},[loading]);
- async function analyze(){
+ function selectRepresentativePages(urls){
+ const seen=new Set(),picked=[]; const add=(u,type)=>{if(!u||seen.has(u))return;seen.add(u);picked.push({url:u,type})};
+ const groups=[['home',u=>{try{return new URL(u).pathname==='/' }catch{return false}}],['company',u=>/company|about|profile|corporate|会社|企業/i.test(u)],['service',u=>/service|business|solution|product|事業|サービス|製品/i.test(u)],['proof',u=>/case|works|result|portfolio|実績|事例|導入/i.test(u)],['faq',u=>/faq|question|q&a|よくある質問/i.test(u)],['recruit',u=>/recruit|career|採用/i.test(u)],['contact',u=>/contact|inquiry|お問い合わせ/i.test(u)],['news',u=>/news|blog|column|article|topics|お知らせ|コラム/i.test(u)]];
+ for(const [type,test] of groups){const matches=urls.filter(test);matches.slice(0,type==='service'?12:type==='news'?5:3).forEach(u=>add(u,type))}
+ const bucket=new Map(); for(const u of urls){try{const p=new URL(u).pathname.split('/').filter(Boolean);const key=p.slice(0,Math.min(2,p.length)).join('/')||'/';if(!bucket.has(key))bucket.set(key,[]);bucket.get(key).push(u)}catch{}}
+ for(const arr of bucket.values())arr.slice(0,2).forEach(u=>add(u,'category'));
+ urls.slice(0,10).forEach(u=>add(u,'other')); return picked.slice(0,80).map(x=>x.url)
+}
+async function analyze(){
   setLoading(true);setErr('');setR(null);setProgress({phase:'discover',done:0,total:0});
   try{
    const requested=String(url||'').trim(); let saved=null;
    try{saved=JSON.parse(localStorage.getItem('aioGeoActiveAudit')||'null');if(saved?.input!==requested)saved=null}catch{}
    const dr=await fetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:String(url||'').trim()}),cache:'no-store'}); const dj=await dr.json(); if(!dr.ok)throw new Error(dj.error||'ページ探索に失敗しました');
-   const urls=dj.urls||[]; const total=urls.length; const all=Array.isArray(saved?.all)?saved.all:[]; const failed=Array.isArray(saved?.failed)?saved.failed:[]; const size=20; const startAt=Math.min(Number(saved?.nextIndex)||0,total); setProgress({phase:'analyze',done:startAt,total});
-   for(let i=startAt;i<urls.length;i+=size){
-    const chunk=urls.slice(i,i+size); let bj=null;
+   const urls=dj.urls||[]; const total=urls.length; const auditUrls=selectRepresentativePages(urls); const auditTotal=auditUrls.length; const all=[]; const failed=[]; const size=20; const startAt=0; setProgress({phase:'analyze',done:startAt,total:auditTotal,siteTotal:total});
+   for(let i=startAt;i<auditUrls.length;i+=size){
+    const chunk=auditUrls.slice(i,i+size); let bj=null;
     for(let retry=0;retry<2;retry++){try{const br=await fetch('/api/analyze-batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({urls:chunk}),cache:'no-store'});bj=await br.json();if(br.ok)break}catch{} if(retry===0)await new Promise(x=>setTimeout(x,700));}
     if(!bj?.results)failed.push(...chunk); else {all.push(...bj.results.filter(x=>x.ok));failed.push(...(bj.failed||[]));}
-    const nextIndex=Math.min(i+chunk.length,total); setProgress({phase:'analyze',done:nextIndex,total});
+    const nextIndex=Math.min(i+chunk.length,auditTotal); setProgress({phase:'analyze',done:nextIndex,total:auditTotal,siteTotal:total});
     try{localStorage.setItem('aioGeoActiveAudit',JSON.stringify({input:requested,url:dj.url,total,nextIndex,all:all.map(x=>({...x,textSample:String(x.textSample||'').slice(0,500)})),failed:[...new Set(failed)],savedAt:new Date().toISOString()}))}catch{}
    }
    if(failed.length){
-    setProgress({phase:'retry',done:total-failed.length,total});
+    setProgress({phase:'retry',done:auditTotal-failed.length,total:auditTotal,siteTotal:total});
     const retryTargets=[...new Set(failed)]; failed.length=0;
     for(let i=0;i<retryTargets.length;i+=10){
      const chunk=retryTargets.slice(i,i+10); try{const br=await fetch('/api/analyze-batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({urls:chunk}),cache:'no-store'});const bj=await br.json();if(br.ok&&bj?.results){all.push(...bj.results.filter(x=>x.ok));failed.push(...(bj.failed||[]));}else failed.push(...chunk);}catch{failed.push(...chunk)}
-     setProgress({phase:'retry',done:Math.min(total-failed.length,total),total});
+     setProgress({phase:'retry',done:Math.min(auditTotal-failed.length,auditTotal),total:auditTotal,siteTotal:total});
     }
    }
-   setProgress({phase:'finalize',done:total-failed.length,total});
+   setProgress({phase:'finalize',done:auditTotal-failed.length,total:auditTotal,siteTotal:total});
    if(all.length===0)throw new Error('サイトの内容を取得できなかったため、スコアは算出していません。アクセス制限などを確認して再診断してください。');
    const keys=['entity','structure','schema','faq','trust','citation']; const categories={}; for(const k of keys){const vals=all.map(x=>x.categories?.[k]).filter(Number.isFinite);const score=vals.length?Math.round(vals.reduce((a,b)=>a+b,0)/vals.length):0;categories[k]={score,findings:[score>=80?'全ページ集計では良好な状態です。':score>=60?'全ページ集計で改善余地が見つかりました。':'全ページ集計で優先的な改善が必要です。']};}
    const score=Math.round(keys.reduce((a,k)=>a+categories[k].score,0)/keys.length); const title=all[0]?.title||dj.url;
-   const data={url:dj.url,title,score,pagesAnalyzed:all.length,pagesDiscovered:total,pagesFailed:failed.length,complete:failed.length===0,pages:all.map(x=>x.url),pageResults:all.map(x=>({url:x.url,title:x.title,score:Math.round(keys.reduce((a,k)=>a+(x.categories?.[k]||0),0)/keys.length),categories:x.categories,textSample:x.textSample,role:x.role||'other',roleLabel:x.roleLabel||'診断ページ',weight:x.weight||1,checks:x.checks||{},issues:x.issues||[]})),failedPages:failed,categories,actions:['低スコアのページからtitle・description・H1を整理する','ページ内容に合う構造化データを実装する','会社情報・実績・FAQなど一次情報を充実させる'],summary:failed.length?`${total}ページを発見し、${all.length}ページを診断しました。${failed.length}ページは再試行後も取得できませんでした。総合スコアは ${score}/100 です。`:`${total}ページを発見し、全${all.length}ページの診断が完了しました。総合スコアは ${score}/100 です。`,summarySimple:`公開ページ全体をページ単位で確認した結果、AI検索への対応度は${score}点でした。`};
+   const data={url:dj.url,title,score,pagesAnalyzed:all.length,pagesDiscovered:total,pagesFailed:failed.length,complete:failed.length===0,pages:all.map(x=>x.url),pageResults:all.map(x=>({url:x.url,title:x.title,score:Math.round(keys.reduce((a,k)=>a+(x.categories?.[k]||0),0)/keys.length),categories:x.categories,textSample:x.textSample,role:x.role||'other',roleLabel:x.roleLabel||'診断ページ',weight:x.weight||1,checks:x.checks||{},issues:x.issues||[]})),failedPages:failed,categories,actions:['低スコアのページからtitle・description・H1を整理する','ページ内容に合う構造化データを実装する','会社情報・実績・FAQなど一次情報を充実させる'],summary:failed.length?`${total}ページを把握し、代表${all.length}ページを精密診断しました。${failed.length}ページは取得できませんでした。総合スコアは ${score}/100 です。`:`サイト全体の${total}ページを把握し、その構造から代表${all.length}ページを選んで精密診断しました。総合スコアは ${score}/100 です。`,summarySimple:`サイト全体のページ構成を把握したうえで、重要ページ・各カテゴリーの代表ページを診断した結果、AI検索への対応度は${score}点でした。`};
    try{const key='aioGeoHistory:'+new URL(data.url).hostname;const old=localStorage.getItem(key);setPrevious(old?JSON.parse(old):null);localStorage.setItem(key,JSON.stringify({score:data.score,categories:data.categories,date:new Date().toISOString(),url:data.url}));}catch{setPrevious(null)}
    setR(data); try{localStorage.removeItem('aioGeoActiveAudit')}catch{}
   }catch(e){setErr(e?.message||String(e))}finally{setLoading(false)}
