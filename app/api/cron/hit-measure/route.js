@@ -5,6 +5,8 @@ export const maxDuration=60;
 export async function GET(request){
  if(!process.env.CRON_SECRET||request.headers.get('authorization')!=='Bearer '+process.env.CRON_SECRET)return NextResponse.json({error:'Unauthorized'},{status:401});
  try{
+  const locked=await redis(['SET','aio:cron:lock',String(Date.now()),'NX','EX',90]);
+  if(locked!=='OK')return NextResponse.json({ok:true,processed:0,reason:'already_running'});
   const ids=await redis(['SMEMBERS','aio:jobs'])||[];
   const jobs=[];
   for(const id of ids.slice(0,50)){
