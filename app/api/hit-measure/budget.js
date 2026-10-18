@@ -14,10 +14,8 @@ export async function reserveSearchBudget(request){
  const counters=[['aio:limit:month:'+month,monthlyLimit,35*86400],['aio:limit:day:'+day,dailyLimit,3*86400],['aio:limit:client:'+day+':'+client,perClientLimit,3*86400]];
  // Reserve before the paid API call. Failed searches still count against the budget.
  // Conservative fail-closed policy if Redis is unavailable.
- for(const [key,limit,ttl] of counters){
-  const count=Number(await redis(['INCR',key]));
-  if(count===1)await redis(['EXPIRE',key,ttl]);
-  if(count>limit)return {allowed:false,reason:key.includes('client')?'client':'budget',retryAfter:86400};
- }
+ const script="for i=1,#KEYS do local n=tonumber(redis.call('GET',KEYS[i]) or '0'); if n>=tonumber(ARGV[i]) then return i end end; for i=1,#KEYS do local n=redis.call('INCR',KEYS[i]); if n==1 then redis.call('EXPIRE',KEYS[i],tonumber(ARGV[i+3])) end end; return 0";
+ const result=Number(await redis(['EVAL',script,3,...counters.map(x=>x[0]),...counters.map(x=>x[1]),...counters.map(x=>x[2])]));
+ if(result>0)return {allowed:false,reason:result===3?'client':'budget',retryAfter:86400};
  return {allowed:true};
 }
