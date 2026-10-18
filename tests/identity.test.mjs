@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const source=readFileSync(new URL('../app/api/hit-measure/identity.js',import.meta.url),'utf8');
+const {assessCompanyMention,assessSiteCitation,companyAliases}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+assert.equal(assessCompanyMention('Appleをおすすめします','Apple').appeared,true);
+assert.equal(assessCompanyMention('pineapple is a fruit','Apple').appeared,false);
+assert.equal(assessCompanyMention('APPLE社の事例','Apple').appeared,true);
+assert.equal(assessCompanyMention('東京都の株式会社サンプルデザインが制作','株式会社サンプルデザイン').appeared,true);
+assert.equal(assessCompanyMention('旧ブランドの事例','新ブランド',['旧ブランド']).appeared,true);
+assert.equal(assessCompanyMention('関係のない会社です','サンプルデザイン').appeared,false);
+assert.equal(companyAliases('株式会社ABC',['ABC','株式会社ABC']).length,1);
+assert.equal(assessSiteCitation(['https://www.example.jp/news'],'https://example.jp').cited,true);
+assert.equal(assessSiteCitation(['https://sub.example.jp/a'],'https://example.jp').cited,true);
+assert.equal(assessSiteCitation(['https://fakeexample.jp/a','https://example.jp.evil.org'],'https://example.jp').cited,false);
+assert.equal(assessSiteCitation(['javascript:alert(1)','not a url'],'https://example.jp').cited,false);
+assert.equal(assessSiteCitation(['https://example.jp/a','https://example.jp/a'],'https://example.jp').matchedUrls.length,1);
+console.log('identity checks passed');
