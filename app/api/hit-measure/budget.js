@@ -1,4 +1,5 @@
 import {redis} from './storage';
+import {tenantFromRequest} from './tenant-auth';
 const integer=(value,fallback,min,max)=>{const n=Number(value);return Number.isInteger(n)&&n>=min&&n<=max?n:fallback};
 export async function reserveSearchBudget(request){
  const now=new Date();
@@ -11,11 +12,14 @@ export async function reserveSearchBudget(request){
  const encoder=new TextEncoder();
  const digest=await crypto.subtle.digest('SHA-256',encoder.encode(ip));
  const client=Array.from(new Uint8Array(digest)).slice(0,12).map(x=>x.toString(16).padStart(2,'0')).join('');
+ const tenant=tenantFromRequest(request);
+ const tenantLimit=integer(process.env.AIO_SEARCH_TENANT_DAILY_LIMIT,20,1,10000);
  const counters=[['aio:limit:month:'+month,monthlyLimit,35*86400],['aio:limit:day:'+day,dailyLimit,3*86400],['aio:limit:client:'+day+':'+client,perClientLimit,3*86400]];
+ if(tenant)counters.push(['aio:limit:tenant:'+day+':'+tenant,tenantLimit,3*86400]);
  // Reserve before the paid API call. Failed searches still count against the budget.
  // Conservative fail-closed policy if Redis is unavailable.
- const script="for i=1,#KEYS do local n=tonumber(redis.call('GET',KEYS[i]) or '0'); if n>=tonumber(ARGV[i]) then return i end end; for i=1,#KEYS do local n=redis.call('INCR',KEYS[i]); if n==1 then redis.call('EXPIRE',KEYS[i],tonumber(ARGV[i+3])) end end; return 0";
- const result=Number(await redis(['EVAL',script,3,...counters.map(x=>x[0]),...counters.map(x=>x[1]),...counters.map(x=>x[2])]));
- if(result>0)return {allowed:false,reason:result===3?'client':'budget',retryAfter:86400};
+ const script="local count=#KEYS; for i=1,count do local n=tonumber(redis.call('GET',KEYS[i]) or '0'); if n>=tonumber(ARGV[i]) then return i end end; for i=1,count do local n=redis.call('INCR',KEYS[i]); if n==1 then redis.call('EXPIRE',KEYS[i],tonumber(ARGV[i+count])) end end; return 0";
+ const result=Number(await redis(['EVAL',script,counters.length,...counters.map(x=>x[0]),...counters.map(x=>x[1]),...counters.map(x=>x[2])]));
+ if(result>0)return {allowed:false,reason:result===4?'tenant':result===3?'client':'budget',retryAfter:86400};
  return {allowed:true};
 }
