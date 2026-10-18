@@ -1,6 +1,7 @@
 import {reserveSearchBudget} from '../../hit-measure/budget';
 import {NextResponse} from 'next/server';
 import {redis} from '../../hit-measure/storage';
+export const maxDuration=60;
 export async function GET(request){
  if(!process.env.CRON_SECRET||request.headers.get('authorization')!=='Bearer '+process.env.CRON_SECRET)return NextResponse.json({error:'Unauthorized'},{status:401});
  try{
@@ -27,6 +28,7 @@ export async function GET(request){
   const citations=blocks.flatMap(x=>x.annotations||[]).filter(x=>x.type==='url_citation').map(x=>x.url);
   const entry={question,answer,citations,measuredAt:new Date().toISOString(),provider:'OpenAI API'};
   await redis(['LPUSH','aio:history:'+job.id,JSON.stringify(entry)]);
+  await redis(['LTRIM','aio:history:'+job.id,0,399]);
   job.runs+=1;
   await redis(['SET','aio:job:'+job.id,JSON.stringify(job)]);
   return NextResponse.json({ok:true,registered:jobs.length,processed:1});
