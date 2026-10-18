@@ -1,3 +1,4 @@
+import {reserveSearchBudget} from '../../hit-measure/budget';
 import {NextResponse} from 'next/server';
 import {redis} from '../../hit-measure/storage';
 export async function GET(request){
@@ -15,6 +16,8 @@ export async function GET(request){
   const job=active[cursor%active.length];
   const question=job.questions[job.runs%job.questions.length];
   if(!process.env.OPENAI_API_KEY)return NextResponse.json({error:'API key not configured'},{status:503});
+  const budget=await reserveSearchBudget(request);
+  if(!budget.allowed)return NextResponse.json({error:'Monthly or daily search budget reached'},{status:429});
   const result=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{authorization:'Bearer '+process.env.OPENAI_API_KEY,'content-type':'application/json'},body:JSON.stringify({model:'gpt-4.1',tools:[{type:'web_search_preview'}],input:question,max_output_tokens:600}),signal:AbortSignal.timeout(45000)});
   if(!result.ok)return NextResponse.json({error:'Provider unavailable'},{status:502});
   const response=await result.json();
