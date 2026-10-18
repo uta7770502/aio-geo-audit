@@ -75,6 +75,7 @@ async function analyze(){
   if(!r)return;
   try{
    sessionStorage.setItem('aioGeoReport',JSON.stringify(r));
+   sessionStorage.setItem('aioGeoReportHistory',JSON.stringify(auditRows));
    window.location.href='/report';
   }catch(e){
    setErr('PDFレポートを開けませんでした。もう一度診断してからお試しください。');
