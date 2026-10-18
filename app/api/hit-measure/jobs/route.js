@@ -20,3 +20,32 @@ export async function GET(request){
   return NextResponse.json({jobs});
  }catch(e){return NextResponse.json({error:e.message},{status:503})}
 }
+
+export async function PATCH(request){
+ const secret=process.env.MEASURE_ADMIN_SECRET;
+ if(!secret||request.headers.get('authorization')!=='Bearer '+secret)return NextResponse.json({error:'Unauthorized'},{status:401});
+ try{
+  const body=await request.json();
+  const id=String(body.id||'').trim().toLowerCase();
+  const status=body.status;
+  if(!/^[a-z0-9.-]{3,253}$/.test(id)||!['active','paused'].includes(status))return NextResponse.json({error:'Invalid job or status'},{status:400});
+  const raw=await redis(['GET','aio:job:'+id]);
+  if(!raw)return NextResponse.json({error:'Job not found'},{status:404});
+  const job=JSON.parse(raw);
+  job.status=status;
+  job.updatedAt=new Date().toISOString();
+  await redis(['SET','aio:job:'+id,JSON.stringify(job)]);
+  return NextResponse.json({ok:true,id,status});
+ }catch{return NextResponse.json({error:'Could not update job'},{status:503})}
+}
+export async function DELETE(request){
+ const secret=process.env.MEASURE_ADMIN_SECRET;
+ if(!secret||request.headers.get('authorization')!=='Bearer '+secret)return NextResponse.json({error:'Unauthorized'},{status:401});
+ try{
+  const id=String(new URL(request.url).searchParams.get('id')||'').trim().toLowerCase();
+  if(!/^[a-z0-9.-]{3,253}$/.test(id))return NextResponse.json({error:'Invalid job'},{status:400});
+  await redis(['SREM','aio:jobs',id]);
+  await redis(['DEL','aio:job:'+id]);
+  return NextResponse.json({ok:true,id,historyRetained:true});
+ }catch{return NextResponse.json({error:'Could not delete job'},{status:503})}
+}
