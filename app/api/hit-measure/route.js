@@ -1,3 +1,4 @@
+import {reserveSearchBudget} from './budget';
 import {assessCompanyMention,assessSiteCitation} from './identity';
 import {NextResponse} from 'next/server';
 export const maxDuration=60;
@@ -12,6 +13,9 @@ export async function POST(request){
   const aliases=Array.isArray(body.aliases)?body.aliases.slice(0,8).map(x=>String(x).slice(0,100)):[];
   const competitorNames=Array.isArray(body.competitors)?body.competitors.slice(0,10).map(x=>String(x).trim().slice(0,100)).filter(Boolean):[];
   if(!question||!company||!/^https?:\/\//.test(site))return NextResponse.json({error:'測定条件が不足しています'},{status:400});
+  let budget;
+  try{budget=await reserveSearchBudget(request)}catch{return NextResponse.json({error:'利用上限を確認できないため、測定を一時停止しています。',code:'budget_unavailable'},{status:503})}
+  if(!budget.allowed)return NextResponse.json({error:'AI検索の利用上限に達しました。翌日以降に再度お試しください。',code:'rate_limited'},{status:429,headers:{'Retry-After':String(budget.retryAfter)}});
   const res=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+key},body:JSON.stringify({model:'gpt-4.1',tools:[{type:'web_search_preview'}],input:[{role:'system',content:'あなたは日本語で企業を調べる検索アシスタントです。質問に対して公開Web情報を参照し、確認できた事実だけで簡潔に答えてください。企業名を無理に含めたり、特定の企業を優遇したりしないでください。'},{role:'user',content:question}],max_output_tokens:800}),signal:AbortSignal.timeout(48000),cache:'no-store'});
   const json=await res.json();
   if(!res.ok)return NextResponse.json({error:'検索APIで測定できませんでした',detail:json?.error?.message||''},{status:502});
