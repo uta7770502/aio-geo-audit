@@ -5,6 +5,8 @@ export async function POST(request){
  if(!secret||request.headers.get('authorization')!=='Bearer '+secret)return NextResponse.json({error:'Unauthorized'},{status:401});
  try{
   const job=cleanJob(await request.json());
+  const existing=await redis(['GET','aio:job:'+job.id]);
+  if(existing)return NextResponse.json({error:'Job already exists. Pause or delete it before registering again.'},{status:409});
   await redis(['SET','aio:job:'+job.id,JSON.stringify(job)]);
   await redis(['SADD','aio:jobs',job.id]);
   return NextResponse.json({ok:true,id:job.id,scheduled:true,notice:'Daily cron processes at most one question per day. Configure storage and CRON_SECRET before use.'});
