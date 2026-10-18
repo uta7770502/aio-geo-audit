@@ -7,6 +7,8 @@ function token(){
  return day+'.'+createHmac('sha256',key).update(day).digest('hex');
 }
 export async function POST(request){
+ const origin=request.headers.get('origin');
+ if(!origin||origin!==new URL(request.url).origin)return NextResponse.json({error:'Invalid origin'},{status:403});
  const key=process.env.MEASURE_ADMIN_SECRET;
  const {password}=await request.json().catch(()=>({}));
  const a=Buffer.from(String(password||'')),b=Buffer.from(key||'');
