@@ -12,8 +12,8 @@ export default function HitMeasure(){
   const stop=/^(ホーム|トップ|会社概要|お問い合わせ|お知らせ|ニュース|ブログ|採用情報|企業情報|個人情報|プライバシー|サイトマップ|メニュー|サービス|事業内容|実績|紹介|一覧|詳細|株式会社|有限会社|合同会社|診断|改善|ページ|公式サイト|トップページ)$/;
   const freq=new Map();
   const add=(s,weight=1)=>{const t=String(s||'').replace(/^[\s・\-]+|[\s・\-]+$/g,'').trim();if(t.length<2||t.length>22||stop.test(t)||/^(https?:|www\.|\d+$)/.test(t)||/[{}<>]/.test(t))return;freq.set(t,(freq.get(t)||0)+weight)};
-  for(const p of data.pageResults||[]){const title=String(p.title||'').split(/[｜|:：／/–—]/);title.slice(0,3).forEach(x=>add(x,3))}
-  for(const segment of raw.split(/[\s、。・｜|:：／/()（）【】「」\[\]<>\n\r]+/)){if(segment.length>=2&&segment.length<=22)add(segment,1)}
+  for(const p of data.pageResults||[]){const title=String(p.title||'').split(/[｜|:：／\/–—]/);title.slice(0,3).forEach(x=>add(x,3))}
+  for(const segment of raw.split(/[\s、。・｜|:：／\/()（）【】「」\[\]<>\n\r]+/)){if(segment.length>=2&&segment.length<=22)add(segment,1)}
   const serviceWords=['パッケージデザイン','Web制作','ホームページ制作','グラフィックデザイン','印刷','販促什器','店舗什器','ブランディング','SEO対策','AIO対策','GEO対策','システム開発','アプリ開発','物流','倉庫管理','建築設計','リフォーム','人材紹介','採用支援','経理代行','税務相談','介護サービス','放課後等デイサービス','製造','OEM','食品開発','ECサイト制作'];
   for(const word of serviceWords){const matches=raw.match(new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'g'));if(matches)add(word,5+Math.min(matches.length,5))}
   const company=String(data.title||'').split(/[｜|:：]/)[0].replace(/株式会社|有限会社|合同会社/g,'').trim();
