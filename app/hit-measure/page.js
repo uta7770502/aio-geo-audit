@@ -39,7 +39,7 @@ export default function HitMeasure(){
   return templates.map((fn,i)=>fn(topics[i%topics.length]));
  },[topic,themes]);
  function toggle(q){setSelected(s=>s.includes(q)?s.filter(x=>x!==q):s.length<10?[...s,q]:s)}
- function save(){if(selected.length<5)return alert('5問以上選択してください');try{const h=new URL(data.url).hostname;localStorage.setItem('aioHitMeasure:'+h,JSON.stringify({selected,period,createdAt:new Date().toISOString(),url:data.url,history:historyRows,companyName,competitors:competitorText.split(/[、,\n]/).map(x=>x.trim()).filter(Boolean).slice(0,10),aliases:aliasText.split(/[、,\n]/).map(x=>x.trim()).filter(Boolean),competitors:competitorText.split(/[、,\n]/).map(x=>x.trim()).filter(Boolean).slice(0,10)}));setShowMeasure(true);alert('設定を保存しました。続けて測定結果を記録できます')}catch{}}
+ function save(){if(selected.length<5)return alert('5問以上選択してください');try{const h=new URL(data.url).hostname;localStorage.setItem('aioHitMeasure:'+h,JSON.stringify({selected,period,createdAt:new Date().toISOString(),url:data.url,history:historyRows,companyName,competitors:competitorText.split(/[、,\n]/).map(x=>x.trim()).filter(Boolean).slice(0,10),aliases:aliasText.split(/[、,\n]/).map(x=>x.trim()).filter(Boolean)}));setShowMeasure(true);alert('設定を保存しました。続けて測定結果を記録できます')}catch{}}
 
  function storeHistory(rows){const h=new URL(data.url).hostname;localStorage.setItem('aioHitMeasure:'+h,JSON.stringify({selected,period,url:data.url,history:rows,companyName,competitors:competitorText.split(/[、,\n]/).map(x=>x.trim()).filter(Boolean).slice(0,10),aliases:aliasText.split(/[、,\n]/).map(x=>x.trim()).filter(Boolean),updatedAt:new Date().toISOString()}));setHistoryRows(rows)}
  function setAnswer(q,key,value){setRecord(s=>({...s,[q]:{...(s[q]||{}),[key]:value}}))}
