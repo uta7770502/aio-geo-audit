@@ -88,3 +88,5 @@
 
 .hitExecutiveSummary{background:#f1f6fa;border-left:4px solid #1e658e;padding:15px 18px}.hitExecutiveSummary p:first-of-type{font-size:15px;font-weight:600;color:#173b56}.hitReportScope{font-size:11px!important;color:#637789}.hitReportActions ol{padding-left:22px}.hitReportActions li{margin:12px 0;line-height:1.65}.hitReportActions li strong{font-size:13px;color:#173b56}.hitReportActions li p{margin:4px 0}.hitPrintReport header{padding:26px 0 22px}.hitPrintReport header h1{font-size:29px;letter-spacing:.025em}.hitPrintReport section{margin:28px 0}.hitPrintReport th{background:#eaf1f6;color:#173b56}.hitPrintReport footer{margin-top:32px}
 @media print{.hitExecutiveSummary,.hitPrintReport th{-webkit-print-color-adjust:exact;print-color-adjust:exact}.hitPrintReport h2{break-after:avoid-page}.hitReportActions li{break-inside:avoid-page}}
+
+.compareInsight{padding:12px 14px;border-radius:10px;background:#f0f6fa;color:#173d5d;font-size:13px;line-height:1.7;margin:14px 0}.compareInsight+small{display:block}
