@@ -80,3 +80,6 @@
 @media(max-width:600px){.hitPrintReport{padding:16px;margin:0}.hitPrintMetrics{grid-template-columns:repeat(2,1fr)}}
 @page{size:A4 portrait;margin:13mm}
 @media print{body{background:white!important}.hitPrintToolbar{display:none!important}.hitPrintReport{max-width:none;margin:0;padding:0}.hitPrintReport section{break-inside:auto}.hitPrintReport article{break-inside:avoid-page}.hitPrintReport header,.hitPrintMetrics>div{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+
+.hitCloudSync{margin:24px 0;padding:20px;border:1px solid #cddfe9;border-radius:14px;background:#f5faff}.hitCloudSync h3{margin:0 0 8px;color:#163b5b}.hitCloudSync p{font-size:13px;line-height:1.6}.hitCloudFields{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.hitCloudFields input{flex:1 1 160px;min-width:0;border:1px solid #b9cedd;border-radius:8px;padding:11px;font-size:15px}.hitCloudFields button{border:0;border-radius:8px;background:#165c9b;color:white;padding:11px 15px;cursor:pointer}.hitCloudFields button:disabled{opacity:.5;cursor:not-allowed}
+@media print{.hitCloudSync{display:none!important}}
