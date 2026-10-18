@@ -1,9 +1,10 @@
 import {isAdmin} from '../admin-session/auth';
 import {NextResponse} from 'next/server';
 import {redis,cleanJob} from '../storage';
+function writeAllowed(request){const key=process.env.MEASURE_ADMIN_SECRET;if(!key)return false;if(request.headers.get('authorization')==='Bearer '+key)return true;const origin=request.headers.get('origin');return Boolean(origin&&origin===new URL(request.url).origin&&isAdmin(request));}
 export async function POST(request){
  const secret=process.env.MEASURE_ADMIN_SECRET;
- if(!secret||(request.headers.get('authorization')!=='Bearer '+secret&&!isAdmin(request)))return NextResponse.json({error:'Unauthorized'},{status:401});
+ if(!writeAllowed(request))return NextResponse.json({error:'Unauthorized'},{status:401});
  try{
   const job=cleanJob(await request.json());
   const existing=await redis(['GET','aio:job:'+job.id]);
@@ -26,7 +27,7 @@ export async function GET(request){
 
 export async function PATCH(request){
  const secret=process.env.MEASURE_ADMIN_SECRET;
- if(!secret||(request.headers.get('authorization')!=='Bearer '+secret&&!isAdmin(request)))return NextResponse.json({error:'Unauthorized'},{status:401});
+ if(!writeAllowed(request))return NextResponse.json({error:'Unauthorized'},{status:401});
  try{
   const body=await request.json();
   const id=String(body.id||'').trim().toLowerCase();
@@ -43,7 +44,7 @@ export async function PATCH(request){
 }
 export async function DELETE(request){
  const secret=process.env.MEASURE_ADMIN_SECRET;
- if(!secret||(request.headers.get('authorization')!=='Bearer '+secret&&!isAdmin(request)))return NextResponse.json({error:'Unauthorized'},{status:401});
+ if(!writeAllowed(request))return NextResponse.json({error:'Unauthorized'},{status:401});
  try{
   const id=String(new URL(request.url).searchParams.get('id')||'').trim().toLowerCase();
   if(!/^[a-z0-9.-]{3,253}$/.test(id))return NextResponse.json({error:'Invalid job'},{status:400});
