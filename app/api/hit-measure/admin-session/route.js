@@ -6,11 +6,6 @@ function token(){
  const day=new Date().toISOString().slice(0,10);
  return day+'.'+createHmac('sha256',key).update(day).digest('hex');
 }
-export function isAdmin(request){
- const a=Buffer.from(request.cookies.get('aio_admin')?.value||'');
- const b=Buffer.from(token());
- return b.length>0&&a.length===b.length&&timingSafeEqual(a,b);
-}
 export async function POST(request){
  const key=process.env.MEASURE_ADMIN_SECRET;
  const {password}=await request.json().catch(()=>({}));
