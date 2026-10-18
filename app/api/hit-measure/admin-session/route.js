@@ -1,0 +1,27 @@
+import {NextResponse} from 'next/server';
+import {createHmac,timingSafeEqual} from 'node:crypto';
+function token(){
+ const key=process.env.MEASURE_ADMIN_SECRET;
+ if(!key)return '';
+ const day=new Date().toISOString().slice(0,10);
+ return day+'.'+createHmac('sha256',key).update(day).digest('hex');
+}
+export function isAdmin(request){
+ const a=Buffer.from(request.cookies.get('aio_admin')?.value||'');
+ const b=Buffer.from(token());
+ return b.length>0&&a.length===b.length&&timingSafeEqual(a,b);
+}
+export async function POST(request){
+ const key=process.env.MEASURE_ADMIN_SECRET;
+ const {password}=await request.json().catch(()=>({}));
+ const a=Buffer.from(String(password||'')),b=Buffer.from(key||'');
+ if(!key||a.length!==b.length||!timingSafeEqual(a,b))return NextResponse.json({error:'ログインに失敗しました'},{status:401});
+ const response=NextResponse.json({ok:true});
+ response.cookies.set('aio_admin',token(),{httpOnly:true,sameSite:'strict',secure:process.env.NODE_ENV==='production',path:'/api/hit-measure',maxAge:86400});
+ return response;
+}
+export async function DELETE(){
+ const response=NextResponse.json({ok:true});
+ response.cookies.set('aio_admin','',{httpOnly:true,sameSite:'strict',secure:process.env.NODE_ENV==='production',path:'/api/hit-measure',maxAge:0});
+ return response;
+}
