@@ -7,6 +7,7 @@ export function isPrivateAddress(value){
  if(h.includes(':')){
   if(h==='::1'||h==='::'||h.startsWith('fe80:')||/^f[cd][0-9a-f]{2}:/.test(h))return true;
   if(h.startsWith('::ffff:'))return isPrivateAddress(h.slice(7));
+  if(h.startsWith('2001:db8:')||h.startsWith('2001:0:')||h.startsWith('2002:'))return true;
   return isIP(h)!==6;
  }
  if(isIP(h)===4){
@@ -17,7 +18,7 @@ export function isPrivateAddress(value){
 }
 export async function assertPublicUrl(value){
  const u=new URL(value);
- if(!['https:','http:'].includes(u.protocol)||u.username||u.password||isPrivateAddress(u.hostname))throw Error('Public HTTP(S) URL required');
+ if(!['https:','http:'].includes(u.protocol)||u.username||u.password||u.port&& !['80','443'].includes(u.port)||isPrivateAddress(u.hostname))throw Error('Public HTTP(S) URL required');
  const addresses=await lookup(u.hostname,{all:true,verbatim:true});
  if(!addresses.length||addresses.some(x=>isPrivateAddress(x.address)))throw Error('Private address blocked');
  return u;
