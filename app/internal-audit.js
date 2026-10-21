@@ -1,8 +1,11 @@
 // Observable document signals only. No inference of AI visibility or business outcomes.
+function documentText(value=''){
+ return String(value).replace(/!\[[^\]]*\]\([^)]*\)/g,' ').replace(/\[([^\]]+)\]\([^)]*\)/g,'$1').replace(/<[^>]+>/g,' ').replace(/^\s*#{1,6}\s+/gm,'').replace(/\s+/g,' ').trim();
+}
 export function inspectDocument({html='',text='',url='',source='direct'}) {
  const native=source==='direct'&&Boolean(html);
  const visible=String(text).replace(/\s+/g,' ').trim();
- const strip=value=>value.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+ const strip=documentText;
  const body=html.replace(/<script\b[\s\S]*?<\/script>/gi,' ').replace(/<style\b[\s\S]*?<\/style>/gi,' ');
  const paragraphs=native?[...body.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)].map(m=>strip(m[1])):String(text).split(/\n\s*\n/).map(strip);
  const definitions=paragraphs.filter(p=>p.length>=12&&p.length<=260&&/(?:とは|は、).{4,180}(?:です|指します|いいます|である|提供します)[。.]?/.test(p));
@@ -17,6 +20,7 @@ export function inspectDocument({html='',text='',url='',source='direct'}) {
  const title=strip(html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1]||'');
  const headingJump=headingLevels.some((level,i)=>i>0&&level>headingLevels[i-1]+1);
  const primaryKinds=[['survey',/自社調査|当社調査|アンケート/],['expert',/専門家|監修|考察/],['experiment',/実験|検証結果|テスト結果/],['case',/導入事例|事例紹介|ケーススタディ/]].filter(([,re])=>re.test(visible)).map(([key])=>key);
+ const topics=[...new Set((documentText(text).match(/[\p{Script=Han}\p{Script=Katakana}A-Za-z]{2,20}(?:サービス|制作|支援|デザイン|マーケティング)/gu)||[]))].slice(0,5);
  const path=(()=>{try{return new URL(url).pathname;}catch{return '';}})();
  const pageKind=/\/(?:company|about|corporate|profile)(?:\/|$)/i.test(path)?'corporate':/\/(?:service|product|solution)(?:\/|$)/i.test(path)?'service':'unclassified';
  const scripts=[...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)].filter(m=>/\btype\s*=\s*["']application\/ld\+json["']/i.test(m[1]));
@@ -44,7 +48,7 @@ export function inspectDocument({html='',text='',url='',source='direct'}) {
   sourceLink:native?externalSources.length>0:null,
   conditions:/対象|条件|前提|調査期間|集計期間|除外|適用範囲/.test(visible),
   primary:primaryKinds.length>0
- },details:{title,headingsText,excerpt:paragraphs.find(p=>p.length>=20)?.slice(0,240)||visible.slice(0,240),definitionExamples:definitions.slice(0,2).map(p=>p.slice(0,180)),externalSources:[...new Set(externalSources)].slice(0,5),canonicals,primaryKinds,pageKind},jsonld:native?{scripts:scripts.length,invalid,types,organizations}:null,links:native?[...new Set(links)]:null};
+ },details:{title,headingsText,topics,excerpt:paragraphs.find(p=>p.length>=20&&/[。.!?]/.test(p))?.slice(0,240)||paragraphs.find(p=>p.length>=20)?.slice(0,240)||documentText(text).slice(0,240),definitionExamples:definitions.slice(0,2).map(p=>p.slice(0,180)),externalSources:[...new Set(externalSources)].slice(0,5),canonicals,primaryKinds,pageKind},jsonld:native?{scripts:scripts.length,invalid,types,organizations}:null,links:native?[...new Set(links)]:null};
 }
 
 export function buildInternalAudit(documents=[]) {
@@ -132,7 +136,7 @@ export function applyAuditKnowledge(categories={},audit){
 export function buildQuestionPlan(docs=[]){
  const useful=s=>typeof s==='string'&&s.length>=2&&s.length<=60&&!/^(ホーム|TOP|HOME|会社概要|企業情報|お問い合わせ|サービス|事業内容|概要|条件|特徴|料金|詳細|ご案内|メニュー)$/i.test(s)&&!/^https?:/i.test(s);
  const ranked=[...docs].sort((a,b)=>(b.details?.pageKind==='service'?1:0)-(a.details?.pageKind==='service'?1:0));
- const candidates=ranked.flatMap(d=>(d.details?.headingsText||[]).map(topic=>({topic,url:d.url})));
+ const candidates=ranked.flatMap(d=>(d.details?.headingsText||[]).map(topic=>({topic,url:d.url}))).concat(ranked.flatMap(d=>(d.details?.topics||[]).map(topic=>({topic,url:d.url}))));
  const selected=candidates.find(x=>useful(x.topic))||ranked.map(d=>({topic:d.details?.title?.split(/[｜|]/)[0]?.trim(),url:d.url})).find(x=>useful(x.topic));
  const topic=selected?.topic||'対象サービス';
  const questions=[`${topic}とは何か、どんな課題に対応するか？`,`${topic}を他の選択肢と比較する基準は？`,`${topic}の費用と適用条件は？`,`${topic}の導入手順と必要な準備は？`,`${topic}の実績や成果を確認できる根拠は？`];
@@ -152,7 +156,7 @@ export function enrichPageResults(pages=[],audit){
 }
 
 export function buildRewriteDraft(text='',kind='service'){
- const sentences=String(text).replace(/\s+/g,' ').trim().split(/(?<=[。！？!?])/).map(s=>s.trim()).filter(s=>s.length>=6&&s.length<=350&&!/^https?:/i.test(s));
+ const sentences=documentText(text).split(/(?<=[。！？!?])/).map(s=>s.trim()).filter(s=>s.length>=6&&s.length<=350&&!/^https?:/i.test(s));
  const match={company:/会社|事業|企業|提供/,service:/提供|サービス|対応|支援|製品/,proof:/実績|事例|調査|結果|導入/,faq:/料金|費用|期間|条件|対応|方法/}[kind]||/サービス|提供/;
  const first=sentences.find(s=>match.test(s))||sentences[0];
  if(!first)return '編集案（未完成）：取得文に十分な説明文がありません。「対象・提供内容・根拠・適用条件」を担当者が事実確認して記入してください。';

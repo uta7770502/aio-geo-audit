@@ -65,4 +65,8 @@ assert.ok(draft.includes('対象は国内の法人です。'));
 assert.ok(!draft.includes('実績100件'));
 assert.ok(buildRewriteDraft('').includes('未完成'));
 assert.ok(buildInternalAudit([{internalEvidence:inspectDocument({url,text:'# 倉庫管理サービス\n\n企業の物流を支援しています。',source:'firecrawl'})}]).planning.questions[0].includes('倉庫管理サービス'));
+const markdown=inspectDocument({url,text:'![](https://example.com/logo.svg)\n\n[ホーム](https://example.com/)\n\n当社は物流サービスを提供しています。',source:'firecrawl'});
+assert.ok(!markdown.details.excerpt.includes('logo.svg'));
+assert.ok(markdown.details.excerpt.includes('当社は物流サービス'));
+assert.ok(!buildRewriteDraft('![](https://example.com/logo.svg)\n\n当社は物流サービスを提供しています。').includes('logo.svg'));
 console.log('internal audit checks passed');
