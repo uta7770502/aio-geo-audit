@@ -18,6 +18,14 @@ export function inspectDocument({html='',text='',url='',source='direct'}) {
  const headingLevels=[...body.matchAll(/<h([1-6])\b/gi)].map(m=>Number(m[1]));
  const headingsText=native?[...body.matchAll(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/gi)].map(m=>strip(m[1])).filter(Boolean).slice(0,8):[...String(text).matchAll(/^#{1,2}\s+(.+)$/gm)].map(m=>m[1].trim()).slice(0,8);
  const title=strip(html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1]||'');
+ const descriptionTag=[...body.matchAll(/<meta\b[^>]*>/gi)].map(m=>m[0]).find(tag=>/\bname\s*=\s*["']description["']/i.test(tag));
+ const description=strip(descriptionTag?.match(/\bcontent\s*=\s*["']([^"']*)["']/i)?.[1]||'');
+ const identifies=/ブランド|専門店|専門会社|メーカー|製造|販売|洋菓子|フランス菓子|提供する|支援する|手がける|運営する|開発する/;
+ const intro=paragraphs.find(p=>p.length>=15&&p.length<=260&&identifies.test(p));
+ const descriptionEvidence=definitions[0]?{text:definitions[0],location:'本文'}:intro?{text:intro,location:'本文'}:identifies.test(title)?{text:title,location:'ページタイトル'}:identifies.test(description)?{text:description,location:'ページの説明文'}:null;
+ const h1Texts=[...body.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/gi)].map(m=>strip(m[1])||m[1].match(/\balt=["']([^"']*)["']/i)?.[1]||'画像・文字なし');
+ const faqPairs=native?[...body.matchAll(/<dt\b[^>]*>([\s\S]*?)<\/dt>\s*<dd\b[^>]*>([\s\S]*?)<\/dd>/gi)].map(m=>({question:strip(m[1]),answer:strip(m[2])})).filter(p=>p.question):[];
+ const headingJumps=headingLevels.flatMap((level,i)=>i&&level>headingLevels[i-1]+1?[`H${headingLevels[i-1]}→H${level}`]:[]);
  const headingJump=headingLevels.some((level,i)=>i>0&&level>headingLevels[i-1]+1);
  const primaryKinds=[['survey',/自社調査|当社調査|アンケート/],['expert',/専門家|監修|考察/],['experiment',/実験|検証結果|テスト結果/],['case',/導入事例|事例紹介|ケーススタディ/]].filter(([,re])=>re.test(visible)).map(([key])=>key);
  const topics=[...new Set((documentText(text).match(/[\p{Script=Han}\p{Script=Katakana}A-Za-z]{2,20}(?:サービス|制作|支援|デザイン|マーケティング)/gu)||[]))].slice(0,5);
@@ -25,9 +33,10 @@ export function inspectDocument({html='',text='',url='',source='direct'}) {
  const pageKind=classifyPurpose(url,title);
  const scripts=[...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)].filter(m=>/\btype\s*=\s*["']application\/ld\+json["']/i.test(m[1]));
  const nodes=[];let invalid=0;
- function walk(v){if(Array.isArray(v))v.forEach(walk);else if(v&&typeof v==='object'){if(v['@type'])nodes.push(v);if(v['@graph'])walk(v['@graph']);}}
+ function walk(v,depth=0){if(depth>40)return;if(Array.isArray(v))v.forEach(x=>walk(x,depth+1));else if(v&&typeof v==='object'){if(v['@type'])nodes.push(v);Object.values(v).filter(x=>x&&typeof x==='object').forEach(x=>walk(x,depth+1));}}
  for(const m of scripts){try{walk(JSON.parse(m[2]));}catch{invalid++;}}
- const types=[...new Set(nodes.flatMap(n=>[n['@type']].flat()))];
+ const types=[...new Set(nodes.flatMap(n=>[n['@type']].flat()).filter(x=>typeof x==='string'))];
+ const alternativeMarkup=/\bitemscope\b|\btypeof\s*=/i.test(body);
  const organizations=nodes.filter(n=>[n['@type']].flat().some(t=>['Organization','Corporation','LocalBusiness'].includes(t))).map(n=>({name:typeof n.name==='string'?n.name:null,url:typeof n.url==='string'?n.url:null,id:n['@id']||null}));
  const links=[];
  for(const m of html.matchAll(/<a\b[^>]*href\s*=\s*["']([^"']+)["']/gi)){try{const u=new URL(m[1],url);if(u.origin===new URL(url).origin&&/^https?:$/.test(u.protocol)){u.hash='';links.push(u.href);}}catch{}}
@@ -41,14 +50,14 @@ export function inspectDocument({html='',text='',url='',source='direct'}) {
   contact:/所在地|住所/.test(visible)&&/電話|お問い合わせ|連絡先/.test(visible),
   updated:/更新日|最終更新|dateModified/i.test(visible),
   service:/サービス|事業|提供|製品/.test(visible),
-  definition:definitions.length>0,
+  definition:Boolean(descriptionEvidence),
   semantic:native?/<main\b/i.test(body)&&/<(?:article|section)\b/i.test(body):null,
   hierarchy:native?headingLevels.length>0&&!headingJump:null,
   canonical:native?canonicalTags.length===1&&canonicals.length===1:null,
   sourceLink:native?externalSources.length>0:null,
   conditions:/対象|条件|前提|調査期間|集計期間|除外|適用範囲/.test(visible),
   primary:primaryKinds.length>0
- },details:{title,headingsText,topics,excerpt:paragraphs.find(p=>p.length>=20&&/[。.!?]/.test(p))?.slice(0,240)||paragraphs.find(p=>p.length>=20)?.slice(0,240)||documentText(text).slice(0,240),definitionExamples:definitions.slice(0,2).map(p=>p.slice(0,180)),externalSources:[...new Set(externalSources)].slice(0,5),canonicals,primaryKinds,pageKind},jsonld:native?{scripts:scripts.length,invalid,types,organizations}:null,links:native?[...new Set(links)]:null};
+ },details:{title,description,descriptionEvidence,faqPairs,h1Texts:native?h1Texts:null,headingJumps:native?headingJumps:null,canonicalCount:native?canonicalTags.length:null,headingsText,topics,excerpt:paragraphs.find(p=>p.length>=20&&/[。.!?]/.test(p))?.slice(0,240)||paragraphs.find(p=>p.length>=20)?.slice(0,240)||documentText(text).slice(0,240),definitionExamples:definitions.slice(0,2).map(p=>p.slice(0,180)),externalSources:[...new Set(externalSources)].slice(0,5),canonicals,primaryKinds,pageKind},jsonld:native?{scripts:scripts.length,invalid,types,organizations,alternativeMarkup}:null,links:native?[...new Set(links)]:null};
 }
 
 export function buildInternalAudit(documents=[]) {
@@ -95,13 +104,15 @@ export function buildInternalAudit(documents=[]) {
  add('primary','根拠','調査・見解・検証・事例の記載',signal('primary'),'自社調査、専門的見解、検証、事例を事実確認して掲載する。関連語の検出だけでは独自性や一次情報であることを判定しない。',3,2);
  const supplemental=rows;
  const planning=buildQuestionPlan(docs);
+ const recommendations=buildSpecificRecommendations(docs);
  const priorities=[...items,...supplemental].filter(x=>['not_observed','partial','unknown'].includes(x.state)).sort((a,b)=>b.priority-a.priority);
- return {version:2,scope:'取得できた代表ページのみ。未検出はサイト全体での不存在を意味しません。検出は品質・正確性・AI引用の保証ではありません。',items,supplemental,priorities,jsonld:docs.filter(d=>d.jsonld).map(d=>({url:d.url,...d.jsonld})),pageGuidance:docs.filter(d=>d.details).map(d=>({url:d.url,...d.details,instruction:d.details.pageKind==='corporate'?'運営主体・事業領域・沿革・実績の関係を明確にし、公式名称と定義を揃える。':d.details.pageKind==='service'?'対象顧客の課題、解決内容、比較条件、費用、根拠を同じ文脈で説明する。':'URLから用途を分類できません。企業紹介かサービス説明かを担当者が選び、ページの目的を明確にする。'})),measurementPlan:{state:'unmeasured',note:'以下は計測計画です。HTML診断からブランド想起・流入・商談成果は算出していません。',metrics:[{name:'AIの言及・引用',method:'質問セット・モデル・実行日時を固定して既存ヒット測定で回答と出典を記録する。'},{name:'AI経由の流入',method:'GA4等で参照元・期間・計測条件を定義する。解析アカウントとの連携は未実装。'},{name:'問い合わせ・商談',method:'イベントと成約の定義を担当者と決める。流入元との関連付けと成果計測は未実装。'}],review:'実装前の基準値と改修履歴を保存し、同じ条件で再確認する。CMS・テンプレート・権限・担当者を決めてから改修する。'},planning};
+ return {version:3,recommendations,scope:'取得できた代表ページのみ。未検出はサイト全体での不存在を意味しません。検出は品質・正確性・AI引用の保証ではありません。',items,supplemental,priorities,jsonld:docs.filter(d=>d.jsonld).map(d=>({url:d.url,...d.jsonld})),pageGuidance:docs.filter(d=>d.details).map(d=>({url:d.url,...d.details,instruction:d.details.pageKind==='corporate'?'運営主体・事業領域・沿革・実績の関係を明確にし、公式名称と定義を揃える。':d.details.pageKind==='service'?'対象顧客の課題、解決内容、比較条件、費用、根拠を同じ文脈で説明する。':'URLから用途を分類できません。企業紹介かサービス説明かを担当者が選び、ページの目的を明確にする。'})),measurementPlan:{state:'unmeasured',note:'以下は計測計画です。HTML診断からブランド想起・流入・商談成果は算出していません。',metrics:[{name:'AIの言及・引用',method:'質問セット・モデル・実行日時を固定して既存ヒット測定で回答と出典を記録する。'},{name:'AI経由の流入',method:'GA4等で参照元・期間・計測条件を定義する。解析アカウントとの連携は未実装。'},{name:'問い合わせ・商談',method:'イベントと成約の定義を担当者と決める。流入元との関連付けと成果計測は未実装。'}],review:'実装前の基準値と改修履歴を保存し、同じ条件で再確認する。CMS・テンプレート・権限・担当者を決めてから改修する。'},planning};
 }
 
 // Fit the research-derived checks into the original six cards and action list.
 // Keep the original page/report layout and score scale; never score manual checks.
 export function applyAuditKnowledge(categories={},audit){
+ if(Array.isArray(audit?.recommendations))return applySpecificRecommendations(categories,audit.recommendations);
  const groups={entity:['entity','definition','theme'],structure:['html','hierarchy','links','canonical'],schema:['jsonld'],faq:['faq','fanout'],trust:['contact','author','evidence','primary','sourceLink','conditions'],citation:['answer','rewrite','visibility']};
  const checks=[...(audit?.items||[]),...(audit?.supplemental||[])];
  const categoryEntries=Object.entries(categories).map(([key,value])=>{
@@ -135,7 +146,7 @@ export function classifyPurpose(url='',title=''){
  if(/case|works|result|事例|実績/i.test(path+' '+name))return 'proof';
  if(/news|blog|column|article|お知らせ/i.test(path+' '+name))return 'article';
  if(/service|product|solution|business|item|商品|サービス/i.test(path+' '+name))return 'service';
- if(path==='/'||/\/index\.(?:html?|php)$/.test(path))return 'home';
+ if(path==='/'||/^\/index\.(?:html?|php)$/.test(path))return 'home';
  return 'unclassified';
 }
 function checkApplies(id,doc){
@@ -180,6 +191,63 @@ export function formatRecommendation(check){
  return `${advice.label}：${advice.how}${check.checked>1?`（この確認に適した${check.checked}ページのうち、${check.checked-check.matched}ページで記載・設定を確認できませんでした）`:''}${target?`\n対象ページ：\n${target.url}\n`:''}`;
 }
 
+// Recommend changes only from attributable observations. Optional settings and
+// unsupported content assumptions stay out of the "fix first" list.
+export function buildSpecificRecommendations(documents=[]){
+ const rank={home:0,corporate:1,service:2,faq:3,contact:4,article:5,proof:5,unclassified:6,policy:7};
+ const docs=[...documents].sort((a,b)=>(rank[a.details?.pageKind]??6)-(rank[b.details?.pageKind]??6));
+ const out=[];
+ const add=(key,state,priority,title,evidence,change,verify,pages=[],related=[])=>out.push({key,state,priority,title,evidence,change,verify,pages:pages.map(d=>d.url),related:related.map(d=>d.url)});
+ const html=docs.filter(d=>d.native&&Array.isArray(d.details?.h1Texts));
+ const noH1=html.filter(d=>d.details.h1Texts.length===0);
+ if(noH1.length)add('structure','fix',9,'ページの主題を見出しで示す',`取得したHTMLで、主題を示すH1見出しが0個のページを${noH1.length}件確認しました。`,'対象ページの題名を主見出しに設定してください。画像の題名がある場合は、同じ意味が文字や代替テキストでも伝わるよう制作担当者と確認します。','HTMLのH1と画面の題名が一致しているか確認する。',noH1);
+ const jumps=html.filter(d=>d.details.h1Texts.length>0&&d.details.headingJumps?.length);
+ if(jumps.length)add('structure','fix',7,'飛んでいる見出しの階層をつなぐ',`${jumps.length}ページで見出しが途中の階層を飛ばしています。最初の対象では${jumps[0].details.headingJumps[0]}を確認しました。`,'見出しの文章は残し、上位・下位の関係に合わせて階層を調整してください。見た目の文字サイズだけを理由に見出しレベルを選ばないようにします。','対象の見出しが上から順に追えるか確認する。',jumps);
+ const multiple=html.filter(d=>d.details.h1Texts.length>1);
+ if(multiple.length)add('structure','review',2,'複数の主見出しの役割を確認する',`最初の対象でH1を${multiple[0].details.h1Texts.length}個確認しました。複数あることだけで不正とは判定しません。`,'主題が複数に分かれて見えないか確認し、必要な場合だけ見出しを整理してください。','ページの主題と各見出しの役割を編集担当者が確認する。',multiple);
+ const duplicate=html.filter(d=>d.details.canonicalCount>1);
+ if(duplicate.length)add('structure','fix',8,'重複した代表URL指定を整理する',`${duplicate.length}ページに代表URLの指定が複数あります。`,'テンプレートとプラグインの両方から出ていないかを調べ、正式なURLの指定を1つに統一してください。','公開HTMLに代表URLの指定が1件だけ出ることを確認する。',duplicate);
+ const badJson=docs.filter(d=>d.jsonld?.invalid>0);
+ if(badJson.length)add('schema','fix',10,'読み取れない構造化データを修正する',`${badJson.length}ページのJSON-LDでJSONの構文エラーを確認しました。最初の対象では${badJson[0].jsonld.invalid}件です。`,'制作担当者に該当スクリプトの括弧・引用符・カンマを修正してもらってください。会社や商品の新しいデータを増やす前に、現在の設定を読み取れる状態にします。','再診断で構文エラーが0件になり、構造化データの型を読み取れるか確認する。',badJson);
+ const structured=docs.filter(d=>d.jsonld&&(d.jsonld.types.length||d.jsonld.alternativeMarkup));
+ if(!badJson.length&&structured.length)add('schema','observed',0,'既存の情報設定を確認できました',`${structured.length}ページに構造化データ、または別形式の情報指定があります。`,'JSON-LDがないという理由だけで別形式の設定を追加・重複させる必要はありません。表示内容と設定の一致を確認してください。','既存設定が会社・商品などの表示内容と一致するか、外部の検証ツールでも確認する。',structured);
+ if(!badJson.length&&!structured.length){const inspectable=docs.filter(d=>d.jsonld);add('schema','review',1,'構造化データの導入を検討する',inspectable.length?`取得したHTML${inspectable.length}ページではJSON-LDの型や別形式の情報指定を確認できませんでした。`:'元のHTMLを取得できず、構造化データは未測定です。','会社紹介や商品情報を検索サービスへ明示する必要があるか、制作担当者と判断してください。未設置だけでページの誤りやAI引用の不利益とは断定しません。','導入する場合は、画面上の事実と一致し、既存設定と重複しないことを確認する。',inspectable.slice(0,1));}
+ const core=docs.filter(d=>['home','corporate','service'].includes(d.details?.pageKind));
+ const described=core.filter(d=>d.details.descriptionEvidence);
+ if(described.length){const d=described[0];add('entity','observed',0,'会社・ブランドの説明は既にあります',`${d.details.descriptionEvidence.location}に「${d.details.descriptionEvidence.text.slice(0,160)}」という説明を確認しました。`,'同じ定義文を全ページに追加する必要はありません。事業や商品の説明が変わる場合だけ、この記述と関連ページの名称を揃えてください。','会社名・ブランド名と提供内容が矛盾していないか確認する。',[d]);}
+ else if(core.length)add('entity','review',3,'主な事業や商品の説明を確認する','トップ・会社概要・商品説明の取得範囲で、対象と提供内容が一緒に分かる短い説明を特定できませんでした。','既に画像や別のページで説明している場合は、その案内を確認してください。説明が不足している場合だけ、冒頭に事業・商品の種類と特徴を1〜2文で補います。','新しい説明が既存の会社概要や実際の商品と一致するか確認する。',core.slice(0,1));
+ const contacts=docs.filter(d=>d.signals?.contact&&['home','corporate','contact'].includes(d.details?.pageKind));
+ const home=docs.find(d=>d.details?.pageKind==='home');
+ if(contacts.length){
+  add('trust','observed',0,'運営者情報の掲載を確認できました','取得した会社案内・お問い合わせ等に、所在地と連絡方法の記載があります。','既にある情報を全ページへ複製する必要はありません。正式な会社名と現状の連絡先が一致するか確認してください。','掲載先の名称・所在地・連絡先が最新か確認する。',contacts.slice(0,1));
+  if(home?.links){const reached=new Set([home.url,...home.links]);docs.filter(d=>reached.has(d.url)).forEach(d=>(d.links||[]).forEach(u=>reached.add(u)));if(!contacts.some(d=>reached.has(d.url)))add('trust','fix',6,'既存の会社案内への導線を作る','会社情報は取得できましたが、トップから2段階以内の取得リンクでは、その掲載先に到達できませんでした。','会社情報を新しく作り直さず、既存の掲載先をトップや案内メニューから見つけられるようにしてください。','トップからリンクをたどって会社情報へ到達できるか確認する。',[home],contacts.slice(0,1));}
+ }else if(docs.length)add('trust','review',1,'会社案内の掲載先を確認する','取得した会社案内・お問い合わせ等では、所在地と連絡方法の組み合わせを確認できませんでした。','未取得ページに既に掲載されていれば追加は不要です。既存の掲載先と導線を確認し、本当に不足している場合だけ会社概要へ補ってください。','会社情報の掲載先と、そこへ進めるリンクを確認する。',core.slice(0,1));
+ const faqs=docs.filter(d=>d.details?.pageKind==='faq');
+ const unanswered=faqs.filter(d=>d.details.faqPairs?.some(p=>!p.answer));
+ if(unanswered.length){const pair=unanswered[0].details.faqPairs.find(p=>!p.answer);add('faq','fix',8,'回答本文が空の質問を補う',`質問「${pair.question.slice(0,100)}」の直後の回答欄で、読み取れる文字を確認できませんでした。`,'画像だけで答えている場合も、答えの要点を短い文章で併記してください。別ページに答えがある場合は、その説明へのリンクを追加します。','質問の直後に回答または回答先への案内が読み取れるか再確認する。',unanswered);}
+
+ if(!unanswered.length&&faqs.length)add('faq','review',1,'既存のFAQの回答内容を見直す',`取得範囲にFAQページが${faqs.length}件あります。質問・回答の正しさや網羅性は自動判定していません。`,'新しいFAQページを増やす前に、実際の問い合わせと照らし合わせ、答えが不足する質問だけ補ってください。既に別ページに詳しい説明があれば、その掲載先へ案内します。','問い合わせで多い質問に回答でき、回答先の条件と一致しているか確認する。',faqs.slice(0,1));
+ else if(!faqs.length)add('faq','review',1,'質問への回答が必要な場所を決める','今回の取得範囲では独立したFAQページを特定できませんでした。FAQが必須という判定ではありません。','実際によく受ける質問がある場合に、商品・サービスの説明へ回答を追加するか、既存の案内ページを使うかを選んでください。','問い合わせ内容をもとに必要性を確認する。');
+ add('citation','review',1,'主な説明文から改善対象を選ぶ','結論が先に書かれているか、根拠が適切かは、語句や箇条書きの有無だけでは判断できません。','主な商品・サービスの説明文を1つ選び、要点・根拠・条件が分かれるよう見直してください。改善プレビューの原文案を出発点に、担当者が文脈を確認します。','元の事実・数値・適用条件を変えていないか確認する。',docs.filter(d=>d.details?.pageKind==='service').slice(0,1));
+ return out;
+}
+function formatSpecific(item){
+ const state=item.state==='fix'?'修正':item.state==='review'?'確認・検討':'確認できたこと';
+ return `${state}：${item.title}\n理由：${item.evidence}\n対応：${item.change}\n確認方法：${item.verify}${item.pages.length?`\n対象ページ：\n${item.pages.slice(0,2).join('\n')}\n`:''}${item.related.length?`\n既存の掲載先：\n${item.related.join('\n')}\n`:''}`;
+}
+function applySpecificRecommendations(categories,items){
+ const result=Object.fromEntries(Object.entries(categories).map(([key,value])=>{
+  const relevant=items.filter(x=>x.key===key).sort((a,b)=>b.priority-a.priority);
+  const findings=relevant.slice(0,2).map(formatSpecific);
+  if(!findings.length)findings.push('この項目では、取得した情報から具体的な修正を特定できませんでした。未確認の内容を不足とは判定していません。');
+  return [key,{...value,findings}];
+ }));
+ const fixes=items.filter(x=>x.state==='fix').sort((a,b)=>b.priority-a.priority);
+ const actions=fixes.slice(0,3).map(formatSpecific);
+ if(!actions.length)actions.push('今回の自動確認では、優先して直すべき具体的な不備を特定できませんでした。「確認・検討」の内容は担当者が必要性を判断してください。');
+ return {categories:result,actions,notice:'「修正」は取得した情報で確認できた問題、「確認・検討」は必要性の判断が残る内容です。未取得ページの有無や、AI引用・検索順位への効果は測定していません。'};
+}
+
 export function buildQuestionPlan(docs=[]){
  const useful=s=>typeof s==='string'&&s.length>=2&&s.length<=60&&!/^(ホーム|TOP|HOME|会社概要|企業情報|お問い合わせ|サービス|事業内容|概要|条件|特徴|料金|詳細|ご案内|メニュー)$/i.test(s)&&!/^https?:/i.test(s);
  const ranked=[...docs].sort((a,b)=>(b.details?.pageKind==='service'?1:0)-(a.details?.pageKind==='service'?1:0));
@@ -192,6 +260,7 @@ export function buildQuestionPlan(docs=[]){
 }
 
 export function enrichPageResults(pages=[],audit){
+ if(Array.isArray(audit?.recommendations))return pages.map(page=>{const relevant=audit.recommendations.filter(x=>x.pages.includes(page.url)&&x.state!=='observed').sort((a,b)=>b.priority-a.priority);return {...page,issues:relevant.slice(0,4).map(formatSpecific)};});
  const checks=[...(audit?.items||[]),...(audit?.supplemental||[])];
  return pages.map(page=>{
   const missing=checks.filter(x=>x.pages?.some(p=>p.url===page.url&&p.state==='not_observed')).sort((a,b)=>b.priority-a.priority);
