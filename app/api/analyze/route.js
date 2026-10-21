@@ -1,4 +1,4 @@
-import {buildInternalAudit} from '../../internal-audit';
+import {buildInternalAudit,applyAuditKnowledge} from '../../internal-audit';
 import {NextResponse} from 'next/server';
 
 function cleanText(html=''){return html.replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&nbsp;|&amp;|&quot;|&#39;/g,' ').replace(/\s+/g,' ').trim()}
@@ -439,10 +439,12 @@ export async function POST(req){
   const firstTitle=docs[0].html.match(/<title[^>]*>(.*?)<\/title>/is)?.[1]?.replace(/<[^>]+>/g,' ').trim();
   const usedFallback=docs.some(d=>d.fallback);
 
+  const internalAudit=buildInternalAudit(docs.map(d=>({...d,source:d.source||'direct'})));
+  const knowledge=applyAuditKnowledge(categories,internalAudit);
   return NextResponse.json({
-   internalAudit:buildInternalAudit(docs.map(d=>({...d,source:d.source||'direct'}))),
-   url:start.href,title:firstTitle||start.hostname,score,pagesAnalyzed:docs.length,pagesDiscovered:seen.size+queue.length,pagesFailed:failed.length,complete:!timedOut&&failed.length===0&&queue.length===0,partial:timedOut||queue.length>0,pageLimitReached:seen.size>=MAX_PAGES,pages:docs.map(d=>d.url),pageResults:docs.map(pageDetail),roleCoverage:roleCoverage(docs,start),scoringMethod:'重要ページ加重評価',failedPages:failed.slice(0,50),categories,actions,
-   summary:`${docs.length}ページを取得し、AIO/GEO観点の6カテゴリを診断しました。現時点の総合スコアは ${score}/100 です。${timedOut?' 大規模サイトのため今回は取得できた範囲で一次診断しています。':''}${usedFallback?' 一部ページは代替取得経路を使用しました。':''}`,
+   internalAudit,
+   url:start.href,title:firstTitle||start.hostname,score,pagesAnalyzed:docs.length,pagesDiscovered:seen.size+queue.length,pagesFailed:failed.length,complete:!timedOut&&failed.length===0&&queue.length===0,partial:timedOut||queue.length>0,pageLimitReached:seen.size>=MAX_PAGES,pages:docs.map(d=>d.url),pageResults:docs.map(pageDetail),roleCoverage:roleCoverage(docs,start),scoringMethod:'重要ページ加重評価',failedPages:failed.slice(0,50),categories:knowledge.categories,actions:knowledge.actions,
+   summary:`${docs.length}ページを取得し、AIO/GEO観点の6カテゴリを診断しました。現時点の総合スコアは ${score}/100 です。${timedOut?' 大規模サイトのため今回は取得できた範囲で一次診断しています。':''}${usedFallback?' 一部ページは代替取得経路を使用しました。':''} ${knowledge.notice}`,
    summarySimple:`AIがこのサイトを理解・回答・引用しやすいかを100点満点で確認した結果、${score}点でした。点数が低い項目から直すと、AIに内容が伝わりやすくなります。`,
    fallbackUsed:usedFallback,
    fetchSources:[...new Set(docs.map(d=>d.source))],
@@ -466,4 +468,3 @@ export async function GET(req){
  const result=await firecrawlFallback(target,true);
  return NextResponse.json({target,hasKey:Boolean(process.env.FIRECRAWL_API_KEY),result});
 }
-

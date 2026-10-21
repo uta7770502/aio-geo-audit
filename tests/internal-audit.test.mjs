@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const code=readFileSync(new URL('../app/internal-audit.js',import.meta.url),'utf8');
-const {inspectDocument,buildInternalAudit}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
+const {inspectDocument,buildInternalAudit,applyAuditKnowledge}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
 const url='https://example.com/';
 const html='<h1>会社</h1><h2>サービス</h2><ul><li>説明</li></ul><a href="/service">詳細</a><script type="application/ld+json">{"@graph":[{"@type":"Organization","name":"Example","url":"https://example.com"}]}</script>';
 const doc=inspectDocument({html,text:'サービスとは。調査2026年、所在地と電話。',url});
@@ -36,5 +36,15 @@ assert.equal(buildInternalAudit([{internalEvidence:rich}]).measurementPlan.state
 assert.ok(buildInternalAudit([]).supplemental.every(x=>x.state==='unknown'));
 const old={url,native:true,signals:{},jsonld:null,links:null};
 assert.ok(buildInternalAudit([{internalEvidence:old}]).supplemental.every(x=>x.state==='unknown'));
+const original={entity:{score:61,findings:['旧評価']},schema:{score:25,findings:['旧評価']},citation:{score:30,findings:['旧評価']}};
+const adapted=applyAuditKnowledge(original,fallback);
+assert.equal(adapted.categories.entity.score,61);
+assert.equal(adapted.categories.schema.score,25);
+assert.ok(adapted.categories.schema.findings.some(x=>x.includes('未測定')));
+assert.ok(!adapted.categories.schema.findings.some(x=>x.includes('検出しました')));
+assert.ok(adapted.categories.citation.findings.some(x=>x.includes('未測定')));
+assert.equal(original.entity.findings[0],'旧評価');
+assert.ok(adapted.actions.some(x=>x.includes('要確認（未測定）')));
+assert.ok(Object.values(adapted.categories).every(x=>x.findings.length<=3));
+assert.deepEqual(Object.keys(adapted.categories),Object.keys(original));
 console.log('internal audit checks passed');
-

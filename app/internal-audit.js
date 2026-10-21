@@ -80,7 +80,7 @@ export function buildInternalAudit(documents=[]) {
  const signal=k=>d=>d.signals?.[k];
  add('definition','意味・文脈','用語やサービスの短い定義',signal('definition'),'名称を列挙するだけでなく、対象・意味・提供範囲を短い段落で説明する。語句の検出は定義の正確さを保証しない。',3,1);
  add('semantic','公開HTML','本文の領域を表すHTML',signal('semantic'),'main・article・sectionなどを内容の役割に合わせて選ぶ。タグの存在だけで適切な構造とは断定できない。');
- add('hierarchy','公開HTML','見出しレベルの飛び越し',signal('hierarchy'),'見出しを主題から詳細へ段階的に配置する。内容の連続性や意味的な妥当性は編集者が確認する。',2,1);
+ add('hierarchy','公開HTML','見出しレベルの連続性',signal('hierarchy'),'見出しを主題から詳細へ段階的に配置する。内容の連続性や意味的な妥当性は編集者が確認する。',2,1);
  add('canonical','公開HTML','代表URLを示す指定',signal('canonical'),'canonicalを1件、解決可能なHTTP(S)形式で指定する。代表URLの妥当性・インデックス登録・検索エンジンによる採用は未確認。',2,1);
  add('sourceLink','根拠','出典と分かる外部参照リンク',signal('sourceLink'),'数値や主張の近くに出典・調査条件を示す。リンクの存在と出典の信頼性・到達可否は別途検証する。',3,1);
  add('conditions','根拠','対象や適用条件の説明',signal('conditions'),'対象範囲・前提・期間・除外条件を主張と一緒に記載し、切り出した際にも誤解を防ぐ。',3,1);
@@ -90,3 +90,33 @@ export function buildInternalAudit(documents=[]) {
  return {version:2,scope:'取得できた代表ページのみ。未検出はサイト全体での不存在を意味しません。検出は品質・正確性・AI引用の保証ではありません。',items,supplemental,priorities,jsonld:docs.filter(d=>d.jsonld).map(d=>({url:d.url,...d.jsonld})),pageGuidance:docs.filter(d=>d.details).map(d=>({url:d.url,...d.details,instruction:d.details.pageKind==='corporate'?'運営主体・事業領域・沿革・実績の関係を明確にし、公式名称と定義を揃える。':d.details.pageKind==='service'?'対象顧客の課題、解決内容、比較条件、費用、根拠を同じ文脈で説明する。':'URLから用途を分類できません。企業紹介かサービス説明かを担当者が選び、ページの目的を明確にする。'})),measurementPlan:{state:'unmeasured',note:'以下は計測計画です。HTML診断からブランド想起・流入・商談成果は算出していません。',metrics:[{name:'AIの言及・引用',method:'質問セット・モデル・実行日時を固定して既存ヒット測定で回答と出典を記録する。'},{name:'AI経由の流入',method:'GA4等で参照元・期間・計測条件を定義する。解析アカウントとの連携は未実装。'},{name:'問い合わせ・商談',method:'イベントと成約の定義を担当者と決める。流入元との関連付けと成果計測は未実装。'}],review:'実装前の基準値と改修履歴を保存し、同じ条件で再確認する。CMS・テンプレート・権限・担当者を決めてから改修する。'},planning:{measured:false,questions:['どのようなサービスか','他の選択肢と何が違うか','費用と契約条件は何か','導入までに何が必要か','成果をどう検証できるか'],instruction:'質問候補のひな型です。実際のAIサブクエリは未観測です。中心ページ→各質問の解説→根拠や事例を対応付けてください。'}};
 }
 
+// Fit the research-derived checks into the original six cards and action list.
+// Keep the original page/report layout and score scale; never score manual checks.
+export function applyAuditKnowledge(categories={},audit){
+ const groups={
+  entity:['entity','definition','theme'],
+  structure:['html','hierarchy','semantic','links','canonical','directory','cluster','crawler','performance'],
+  schema:['jsonld'],faq:['faq','fanout'],
+  trust:['contact','author','evidence','primary','sourceLink','conditions','ownership','review'],
+  citation:['answer','rewrite','visibility','priority']
+ };
+ const checks=[...(audit?.items||[]),...(audit?.supplemental||[])];
+ const categoryEntries=Object.entries(categories).map(([key,value])=>{
+  const rows=(groups[key]||[]).map(id=>checks.find(x=>x.id===id)).filter(Boolean);
+  if(!rows.length)return [key,value];
+  const pending=rows.filter(x=>x.state==='not_observed').sort((a,b)=>b.priority-a.priority);
+  const manual=rows.filter(x=>x.state==='unknown');
+  const observed=rows.filter(x=>x.state==='observed');
+  const findings=pending.slice(0,2).map(x=>`取得${x.checked}ページでは「${x.title}」の手掛かりを検出できませんでした。${x.advice}`);
+  if(!findings.length&&observed.length){const x=observed[0];findings.push(`「${x.title}」の手掛かりを${x.matched}/${x.checked}ページで検出しました。品質や正確性の確認は別途必要です。${x.advice}`);}
+  if(manual.length){const x=manual[0];findings.push(`未測定・要確認：${x.title}。${x.advice}`);}
+  else findings.push('取得できた代表ページ内の確認です。サイト全体での有無やAIによる引用実績を示すものではありません。');
+  return [key,{...value,findings:findings.slice(0,3)}];
+ });
+ const ordered=audit?.priorities||[];
+ const detected=ordered.filter(x=>x.state==='not_observed');
+ const manual=ordered.filter(x=>x.state==='unknown');
+ const selected=[...detected.slice(0,3),...(manual.length?[manual.find(x=>x.id==='fanout')||manual[0]]:[])];
+ const actions=selected.length?selected.map(x=>`${x.state==='unknown'?'要確認（未測定）':'取得範囲で未検出'}：${x.advice}`):['検出済みの記載と画面・実際の事実との一致を確認し、同じ条件で継続診断する'];
+ return {categories:Object.fromEntries(categoryEntries),actions,notice:'スコアは取得文書の参考評価です。AIでの順位・引用率・流入、速度や社内運用の実測値ではありません。'};
+}

@@ -94,6 +94,3 @@
 .auditHistory{padding:22px;margin:20px 0;border:1px solid #d7e5ee;border-radius:14px;background:#fff}.auditHistory svg{display:block;width:100%;max-height:230px;margin:16px auto}.auditHistoryDates{display:flex;justify-content:space-between;color:#657b8d;font-size:12px}.auditHistory table{width:100%;border-collapse:collapse;margin-top:20px}.auditHistory th,.auditHistory td{text-align:left;border-bottom:1px solid #e2eaf0;padding:10px;font-size:13px}.auditHistory th{background:#f1f6fa}
 
 .pdfAuditTrend svg{width:100%;max-height:210px;display:block;margin:12px auto}.pdfAuditTrend table{width:100%;border-collapse:collapse}.pdfAuditTrend th,.pdfAuditTrend td{padding:8px 10px;text-align:left;border-bottom:1px solid #dfe7ec;font-size:12px}.pdfAuditTrend th{background:#eef4f8}.pdfTrendNote{font-size:10px;color:#687c89;line-height:1.6}@media print{.pdfAuditTrend{break-inside:avoid-page}.pdfAuditTrend svg{max-height:165px}.pdfAuditTrend th{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-
-.internalAudit{margin:32px 0;overflow-wrap:anywhere}.internalAudit article{padding:14px 0;border-bottom:1px solid #ddd}.internalAudit h4{margin:8px 0}.internalAudit small{color:#555}@media print{.internalAudit article{break-inside:avoid}.internalAudit h3,.internalAudit h4{break-after:avoid}}
-
