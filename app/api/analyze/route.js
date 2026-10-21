@@ -1,3 +1,4 @@
+import {buildInternalAudit} from '../../internal-audit';
 import {NextResponse} from 'next/server';
 
 function cleanText(html=''){return html.replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&nbsp;|&amp;|&quot;|&#39;/g,' ').replace(/\s+/g,' ').trim()}
@@ -416,37 +417,7 @@ export async function POST(req){
    }
   }
   if(!docs.length){
-   return NextResponse.json({
-    url:start.href,
-    title:start.hostname,
-    score:18,
-    pagesAnalyzed:0,
-    pages:[],
-    categories:{
-     entity:{score:20,findings:['外部AIクローラから主要コンテンツを取得できませんでした。企業・サービス情報がAIに認識されにくい状態です。']},
-     structure:{score:25,findings:['ページ本文を取得できないため情報構造を十分に評価できません。クローラがHTML本文へ到達できる状態を確認してください。']},
-     schema:{score:20,findings:['構造化データを外部から確認できませんでした。Organization / Service等のJSON-LDを公開HTMLで確認できる状態にしてください。']},
-     faq:{score:15,findings:['FAQ情報をAIクローラから確認できませんでした。質問と回答を公開HTMLに明示してください。']},
-     trust:{score:20,findings:['会社概要・運営者・連絡先などの信頼情報を外部取得できませんでした。']},
-     citation:{score:10,findings:['AIが本文を取得できないため引用されにくい状態です。AIクローラビリティの改善を最優先してください。']}
-    },
-    actions:[
-     'AIクローラが公開HTMLを取得できるようWAF・Bot対策・robots設定を確認する',
-     '会社・サービス概要をJavaScript実行不要のHTMLにも含める',
-     'Organization / Service等のJSON-LDを公開HTMLへ実装する',
-     'FAQ・会社情報・実績など引用しやすい一次情報を公開する'
-    ],
-    summary:'今回の診断では、外部からページ本文を取得できませんでした。AI検索サービスによって取得条件は異なるため、すべてのAIが閲覧できないことを意味するものではありません。',
-    summarySimple:'AI側からこのサイトの中身をうまく読み取れませんでした。人には普通に見えていても、AIには情報が届きにくい可能性があります。robots.txt、WAF・Bot対策、JavaScript依存などを確認すると改善できる可能性があります。',
-    fallbackUsed:true,
-    fetchSources:[],
-    crawlabilityIssue:true,
-    executiveSummary:executiveSummary({entity:{score:20},structure:{score:25},schema:{score:20},faq:{score:15},trust:{score:20},citation:{score:10}},true),
-    clientGuide:Object.fromEntries(Object.entries({entity:{score:20},structure:{score:25},schema:{score:20},faq:{score:15},trust:{score:20},citation:{score:10}}).map(([k,v])=>[k,clientExplanation(k,v.score,start.hostname)])),
-    implementationPlan:buildImplementationPlan({
-     entity:{score:20},structure:{score:25},schema:{score:20},faq:{score:15},trust:{score:20},citation:{score:10}
-    },true)
-   });
+   return NextResponse.json({error:'本文を取得できないため評価は未測定です。',pagesAnalyzed:0,internalAudit:buildInternalAudit([])},{status:422});
   }
 
   stage='scoring';
@@ -469,6 +440,7 @@ export async function POST(req){
   const usedFallback=docs.some(d=>d.fallback);
 
   return NextResponse.json({
+   internalAudit:buildInternalAudit(docs.map(d=>({...d,source:d.source||'direct'}))),
    url:start.href,title:firstTitle||start.hostname,score,pagesAnalyzed:docs.length,pagesDiscovered:seen.size+queue.length,pagesFailed:failed.length,complete:!timedOut&&failed.length===0&&queue.length===0,partial:timedOut||queue.length>0,pageLimitReached:seen.size>=MAX_PAGES,pages:docs.map(d=>d.url),pageResults:docs.map(pageDetail),roleCoverage:roleCoverage(docs,start),scoringMethod:'重要ページ加重評価',failedPages:failed.slice(0,50),categories,actions,
    summary:`${docs.length}ページを取得し、AIO/GEO観点の6カテゴリを診断しました。現時点の総合スコアは ${score}/100 です。${timedOut?' 大規模サイトのため今回は取得できた範囲で一次診断しています。':''}${usedFallback?' 一部ページは代替取得経路を使用しました。':''}`,
    summarySimple:`AIがこのサイトを理解・回答・引用しやすいかを100点満点で確認した結果、${score}点でした。点数が低い項目から直すと、AIに内容が伝わりやすくなります。`,
@@ -494,3 +466,4 @@ export async function GET(req){
  const result=await firecrawlFallback(target,true);
  return NextResponse.json({target,hasKey:Boolean(process.env.FIRECRAWL_API_KEY),result});
 }
+

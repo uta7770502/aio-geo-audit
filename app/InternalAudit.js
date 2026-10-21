@@ -1,0 +1,6 @@
+const states={observed:'記載・構造の手掛かりあり',not_observed:'取得範囲では未検出',unknown:'未測定・要手動確認'};
+export default function InternalAudit({audit}){
+ if(!audit)return null;
+ return <section className="internalAudit pdfSection"><h2>内部対策20項目</h2><p>{audit.scope}</p><p>従来の6カテゴリの点数は参考指標です。AIでの順位・引用率・権威性の実測値ではありません。以下の20項目は点数へ加算していません。</p>{['コンテンツ','技術','サイト構造','信頼性','運用'].map(group=><div key={group}><h3>{group}</h3>{audit.items.filter(x=>x.group===group).map(x=><article key={x.id}><h4>{x.title} — {states[x.state]}</h4><p>{x.advice}</p><small>確認対象 {x.checked}ページ / 検出 {x.matched}ページ</small>{x.evidence.length>0&&<ul>{x.evidence.map(url=><li key={url}><a href={url}>{url}</a></li>)}</ul>}</article>)}</div>)}<h3>改善・確認の優先候補</h3><p>未検出の項目を影響度×3−工数の目安で並べています。未測定項目は確認待ちです。引用増加の予測値ではありません。</p><ol>{audit.priorities.map(x=><li key={x.id}>{x.title}（{states[x.state]}）</li>)}</ol><h3>質問展開・トピック構成の下書き</h3><p>{audit.planning.instruction}</p><ul>{audit.planning.questions.map(q=><li key={q}>{q}</li>)}</ul><h3>JSON-LD解析結果</h3>{audit.jsonld.length?audit.jsonld.map(x=><article key={x.url}><p>{x.url}</p><p>スクリプト {x.scripts}件 / 構文エラー {x.invalid}件 / 型：{x.types.join('、')||'未検出'}</p></article>):<p>元のHTMLを確認できず、判定を保留しています。</p>}</section>;
+}
+

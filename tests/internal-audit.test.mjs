@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const code=readFileSync(new URL('../app/internal-audit.js',import.meta.url),'utf8');
+const {inspectDocument,buildInternalAudit}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
+const url='https://example.com/';
+const html='<h1>会社</h1><h2>サービス</h2><ul><li>説明</li></ul><a href="/service">詳細</a><script type="application/ld+json">{"@graph":[{"@type":"Organization","name":"Example","url":"https://example.com"}]}</script>';
+const doc=inspectDocument({html,text:'サービスとは。調査2026年、所在地と電話。',url});
+assert.deepEqual(doc.jsonld.types,['Organization']);
+assert.equal(doc.links[0],url+'service');
+const audit=buildInternalAudit([{internalEvidence:doc}]);
+assert.equal(audit.items.length,20);
+assert.deepEqual(['コンテンツ','技術','サイト構造','信頼性','運用'].map(g=>audit.items.filter(x=>x.group===g).length),[6,4,3,3,4]);
+assert.equal(audit.items.find(x=>x.id==='jsonld').state,'observed');
+assert.equal(audit.items.find(x=>x.id==='visibility').state,'unknown');
+const broken=inspectDocument({html:html.replace('{"@graph"','{oops "@graph"'),url});
+assert.equal(broken.jsonld.invalid,1);
+assert.equal(buildInternalAudit([{internalEvidence:broken}]).items.find(x=>x.id==='jsonld').state,'not_observed');
+const fallback=buildInternalAudit([{internalEvidence:inspectDocument({text:'Organization FAQ 会社情報',url,source:'firecrawl'})}]);
+for(const id of ['jsonld','html','links','entity'])assert.equal(fallback.items.find(x=>x.id===id).state,'unknown');
+assert.ok(buildInternalAudit([]).items.every(x=>x.state==='unknown'));
+assert.equal(audit.planning.measured,false);
+console.log('internal audit checks passed');
+

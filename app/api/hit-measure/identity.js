@@ -15,7 +15,7 @@ function mentionIn(text,name){
  // Keep word boundaries for Latin brand names: 'apple' must not match 'pineapple'.
  if(/^[a-z0-9]+$/.test(name)){
   const raw=String(text||'').normalize('NFKC').toLowerCase();
-  const pattern=new RegExp('(^|[^a-z0-9])'+escapeRegExp(name.split('').join('[\\s\\-_.]*'))+'(?=$|[^a-z0-9])','i');
+  const pattern=new RegExp('(^|[^a-z0-9])'+name.split('').map(escapeRegExp).join('[\\s\\-_.]*')+'(?=$|[^a-z0-9])','i');
   return pattern.test(raw);
  }
  return compact(text).includes(name);
@@ -41,3 +41,4 @@ export function assessSiteCitation(citations,site){
   return {cited:matched.length>0,matchedUrls:matched};
  }catch{return {cited:false,matchedUrls:[]}}
 }
+
