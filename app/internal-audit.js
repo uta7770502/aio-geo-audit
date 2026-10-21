@@ -22,7 +22,7 @@ export function inspectDocument({html='',text='',url='',source='direct'}) {
  const primaryKinds=[['survey',/自社調査|当社調査|アンケート/],['expert',/専門家|監修|考察/],['experiment',/実験|検証結果|テスト結果/],['case',/導入事例|事例紹介|ケーススタディ/]].filter(([,re])=>re.test(visible)).map(([key])=>key);
  const topics=[...new Set((documentText(text).match(/[\p{Script=Han}\p{Script=Katakana}A-Za-z]{2,20}(?:サービス|制作|支援|デザイン|マーケティング)/gu)||[]))].slice(0,5);
  const path=(()=>{try{return new URL(url).pathname;}catch{return '';}})();
- const pageKind=/\/(?:company|about|corporate|profile)(?:\/|$)/i.test(path)?'corporate':/\/(?:service|product|solution)(?:\/|$)/i.test(path)?'service':'unclassified';
+ const pageKind=classifyPurpose(url,title);
  const scripts=[...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)].filter(m=>/\btype\s*=\s*["']application\/ld\+json["']/i.test(m[1]));
  const nodes=[];let invalid=0;
  function walk(v){if(Array.isArray(v))v.forEach(walk);else if(v&&typeof v==='object'){if(v['@type'])nodes.push(v);if(v['@graph'])walk(v['@graph']);}}
@@ -55,10 +55,11 @@ export function buildInternalAudit(documents=[]) {
  const docs=documents.map(d=>d.internalEvidence||inspectDocument(d));
  let rows=[];
  const add=(id,group,title,signal,advice,impact=2,effort=2)=>{
-  const eligible=signal?docs.filter(d=>signal(d)!==null&&signal(d)!==undefined):[];
+  const applicable=docs.filter(d=>checkApplies(id,d));
+  const eligible=signal?applicable.filter(d=>signal(d)!==null&&signal(d)!==undefined):[];
   const hits=eligible.filter(d=>signal(d));
-  const state=!eligible.length?'unknown':hits.length===eligible.length?'observed':hits.length?'partial':'not_observed';
-  const pages=docs.map(d=>({url:d.url,state:!signal||signal(d)==null?'unknown':signal(d)?'observed':'not_observed',excerpt:d.details?.excerpt||''}));
+  const state=docs.length&&!applicable.length?'not_applicable':!eligible.length?'unknown':hits.length===eligible.length?'observed':hits.length?'partial':'not_observed';
+  const pages=docs.map(d=>({url:d.url,state:!checkApplies(id,d)?'not_applicable':!signal||signal(d)==null?'unknown':signal(d)?'observed':'not_observed',kind:d.details?.pageKind||classifyPurpose(d.url),excerpt:''}));
   rows.push({id,group,title,state,method:eligible.length?'document_signal':'manual_review',checked:eligible.length,matched:hits.length,evidence:hits.slice(0,5).map(d=>d.url),pages,advice,impact,effort,priority:['not_observed','partial'].includes(state)?impact*3-effort:state==='unknown'?1:0});
  };
  const s=k=>d=>d.signals[k];
@@ -94,43 +95,89 @@ export function buildInternalAudit(documents=[]) {
  add('primary','根拠','調査・見解・検証・事例の記載',signal('primary'),'自社調査、専門的見解、検証、事例を事実確認して掲載する。関連語の検出だけでは独自性や一次情報であることを判定しない。',3,2);
  const supplemental=rows;
  const planning=buildQuestionPlan(docs);
- const priorities=[...items,...supplemental].filter(x=>x.state!=='observed').sort((a,b)=>b.priority-a.priority);
+ const priorities=[...items,...supplemental].filter(x=>['not_observed','partial','unknown'].includes(x.state)).sort((a,b)=>b.priority-a.priority);
  return {version:2,scope:'取得できた代表ページのみ。未検出はサイト全体での不存在を意味しません。検出は品質・正確性・AI引用の保証ではありません。',items,supplemental,priorities,jsonld:docs.filter(d=>d.jsonld).map(d=>({url:d.url,...d.jsonld})),pageGuidance:docs.filter(d=>d.details).map(d=>({url:d.url,...d.details,instruction:d.details.pageKind==='corporate'?'運営主体・事業領域・沿革・実績の関係を明確にし、公式名称と定義を揃える。':d.details.pageKind==='service'?'対象顧客の課題、解決内容、比較条件、費用、根拠を同じ文脈で説明する。':'URLから用途を分類できません。企業紹介かサービス説明かを担当者が選び、ページの目的を明確にする。'})),measurementPlan:{state:'unmeasured',note:'以下は計測計画です。HTML診断からブランド想起・流入・商談成果は算出していません。',metrics:[{name:'AIの言及・引用',method:'質問セット・モデル・実行日時を固定して既存ヒット測定で回答と出典を記録する。'},{name:'AI経由の流入',method:'GA4等で参照元・期間・計測条件を定義する。解析アカウントとの連携は未実装。'},{name:'問い合わせ・商談',method:'イベントと成約の定義を担当者と決める。流入元との関連付けと成果計測は未実装。'}],review:'実装前の基準値と改修履歴を保存し、同じ条件で再確認する。CMS・テンプレート・権限・担当者を決めてから改修する。'},planning};
 }
 
 // Fit the research-derived checks into the original six cards and action list.
 // Keep the original page/report layout and score scale; never score manual checks.
 export function applyAuditKnowledge(categories={},audit){
- const groups={
-  entity:['entity','definition','theme'],
-  structure:['html','hierarchy','semantic','links','canonical','directory','cluster','crawler','performance'],
-  schema:['jsonld'],faq:['faq','fanout'],
-  trust:['contact','author','evidence','primary','sourceLink','conditions','ownership','review'],
-  citation:['answer','rewrite','visibility','priority']
- };
+ const groups={entity:['entity','definition','theme'],structure:['html','hierarchy','links','canonical'],schema:['jsonld'],faq:['faq','fanout'],trust:['contact','author','evidence','primary','sourceLink','conditions'],citation:['answer','rewrite','visibility']};
  const checks=[...(audit?.items||[]),...(audit?.supplemental||[])];
  const categoryEntries=Object.entries(categories).map(([key,value])=>{
   const rows=(groups[key]||[]).map(id=>checks.find(x=>x.id===id)).filter(Boolean);
-  if(!rows.length)return [key,value];
   const pending=rows.filter(x=>['not_observed','partial'].includes(x.state)).sort((a,b)=>b.priority-a.priority);
   const manual=rows.filter(x=>x.state==='unknown');
   const observed=rows.filter(x=>x.state==='observed');
-  const findings=pending.slice(0,2).map(x=>{
-   const target=x.pages?.find(p=>p.state==='not_observed');
-   return `「${x.title}」は確認${x.checked}ページ中${x.checked-x.matched}ページで未検出。${target?`対象：${target.url}。`:''}${x.advice}${target?.excerpt?` 確認した本文の一部：「${target.excerpt.slice(0,90)}」。未検出はこの記述の誤りを意味しません。`:''}`;
-  });
-  if(!findings.length&&observed.length){const x=observed[0];findings.push(`「${x.title}」の手掛かりを${x.matched}/${x.checked}ページで検出しました。品質や正確性の確認は別途必要です。${x.advice}`);}
-  if(manual.length){const x=manual[0];findings.push(`未測定・要確認：${x.title}。${x.advice}${x.id==='fanout'&&audit.planning?.topic?` 質問候補：「${audit.planning.questions[0]}」など。実際のAI検索経路は未観測です。`:''}`);}
-  if(key==='structure'&&audit.planning?.cluster?.hub){const clusterNote=`ページ構成の候補：中心 ${audit.planning.cluster.hub}、補足候補${audit.planning.cluster.spokes.length}ページ。${audit.planning.cluster.note}`; if(findings.length>=3)findings[2]+=' '+clusterNote;else findings.push(clusterNote);}
-  else if(!manual.length) findings.push('取得できた代表ページ内の確認です。サイト全体での有無やAIによる引用実績を示すものではありません。');
+  const findings=pending.slice(0,2).map(x=>formatRecommendation(x));
+  if(!findings.length&&observed.length){const x=observed[0];findings.push(`${plainAdvice(x.id).label}に関する記載を確認できました。内容が最新か、掲載事実と一致しているかを確認してください。`);}
+  if(manual.length){const x=manual[0];findings.push(formatRecommendation(x));}
+  if(key==='structure'&&audit.planning?.cluster?.hub&&audit.planning.cluster.spokes.length){
+   const note='関連する商品・サービスの説明から、選び方やよくある質問へリンクを付けてください。どのページ同士を結ぶかは、内容の関連性を確認して決めます。';
+   if(findings.length<3)findings.push(note);
+  }
+  if(!findings.length)findings.push('この種類のページに一律の追加修正は求めていません。掲載目的に合う情報が揃っているかを確認してください。');
   return [key,{...value,findings:findings.slice(0,3)}];
  });
- const ordered=audit?.priorities||[];
- const detected=ordered.filter(x=>['not_observed','partial'].includes(x.state));
- const manual=ordered.filter(x=>x.state==='unknown');
- const selected=[...detected.slice(0,3),...(manual.length?[manual.find(x=>x.id==='fanout')||manual[0]]:[])];
- const actions=selected.length?selected.map(x=>`${x.state==='unknown'?'要確認（未測定）':'取得範囲で未検出'}：${x.pages?.find(p=>p.state==='not_observed')?.url||''} ${x.advice}${x.state==='unknown'?'':`（影響度の目安${x.impact}/3・工数の目安${x.effort}/3。引用効果の予測値ではありません）`}`):['検出済みの記載と画面・実際の事実との一致を確認し、同じ条件で継続診断する'];
- return {categories:Object.fromEntries(categoryEntries),actions,notice:'スコアは取得文書の参考評価です。AIでの順位・引用率・流入、速度や社内運用の実測値ではありません。'};
+ const detected=(audit?.priorities||[]).filter(x=>['not_observed','partial'].includes(x.state));
+ const actions=detected.slice(0,3).map(formatRecommendation);
+ if(!actions.length)actions.push('自動確認で優先修正を特定できませんでした。未測定の設定は制作担当者に確認してください。');
+ return {categories:Object.fromEntries(categoryEntries),actions,notice:'取得したページの内容に基づく参考評価です。AIに引用された回数や検索順位を測定したものではありません。'};
+}
+
+export function classifyPurpose(url='',title=''){
+ let path='';try{path=new URL(url).pathname.toLowerCase();}catch{}
+ const name=String(title).split(/[｜|]/)[0];
+ if(/faq|question|よくある質問/i.test(path+' '+name))return 'faq';
+ if(/privacy|terms|policy|プライバシー|利用規約/i.test(path+' '+name))return 'policy';
+ if(/contact|inquiry|お問い合わせ/i.test(path+' '+name))return 'contact';
+ if(/company|about|corporate|profile|会社概要|企業情報/i.test(path+' '+name))return 'corporate';
+ if(/case|works|result|事例|実績/i.test(path+' '+name))return 'proof';
+ if(/news|blog|column|article|お知らせ/i.test(path+' '+name))return 'article';
+ if(/service|product|solution|business|item|商品|サービス/i.test(path+' '+name))return 'service';
+ if(path==='/'||/\/index\.(?:html?|php)$/.test(path))return 'home';
+ return 'unclassified';
+}
+function checkApplies(id,doc){
+ const kind=doc.details?.pageKind&&doc.details.pageKind!=='unclassified'?doc.details.pageKind:classifyPurpose(doc.url,doc.details?.title);
+ const limited={entity:['home','corporate'],definition:['home','corporate','service'],theme:['home','corporate','service'],contact:['home','corporate','contact'],author:['article','proof'],evidence:['article','proof','service'],primary:['article','proof','service'],sourceLink:['article','proof'],conditions:['service','faq','proof'],faq:['faq','service'],answer:['service','faq','article','proof']};
+ return !limited[id]||limited[id].includes(kind);
+}
+export function plainAdvice(id){
+ const map={
+  entity:['会社情報をAIに伝える設定','トップページか会社概要に、正式な会社名・公式サイト・所在地を機械向けの会社情報として追加してください。画面の会社概要と同じ内容にします。設定作業は制作担当者へ依頼してください。'],
+  definition:['会社・商品が何かを伝える説明','ページ冒頭に「誰に、どんな商品やサービスを提供しているか」を1〜2文で追加してください。社名や商品名だけで終わらせず、特徴や用途を具体的に書きます。'],
+  theme:['商品・サービスの説明','対象のお客様、提供する内容、対応範囲を冒頭にまとめてください。関連商品の詳しい説明へ進めるリンクも付けます。'],
+  html:['見出しの整理','ページ全体の題名を大見出しにし、その下を「商品について」「選び方」「購入方法」など内容ごとの見出しで分けてください。タグの設定は制作担当者が確認します。'],
+  hierarchy:['見出しの順番','大見出しの下に小見出しを順番に置き、途中の階層を飛ばさないよう制作担当者に調整を依頼してください。'],
+  semantic:['本文の範囲','メニューと本文を区別できるよう、本文の範囲を示す設定を制作担当者に確認してください。'],
+  canonical:['ページの代表URL','同じ内容の別URLがある場合、どれを正式なページとするかを決め、代表URLの設定を制作担当者へ依頼してください。'],
+  links:['関連ページへの案内','このページに関係する商品の説明、購入方法、よくある質問へリンクを付けてください。「こちら」だけでなく、リンク先の内容が分かる名前にします。'],
+  jsonld:['検索サービス向けの情報設定','制作担当者に、ページの内容を検索サービスへ伝える設定を確認してもらってください。会社紹介には会社情報、商品ページには実際に表示している商品情報を登録し、入力エラーや画面との食い違いがないか確認します。'],
+  faq:['質問への答え方','配送、支払い、保存方法、利用条件など実際によく聞かれる質問に、最初の1文で答えてください。その後に条件や例外を補足します。'],
+  fanout:['質問候補の整理','実際の問い合わせを集め、「どんなものか」「どう選ぶか」「費用や条件」「利用方法」に分け、答えが必要なページを決めてください。'],
+  contact:['運営会社と連絡先','会社概要またはお問い合わせページに、正式な会社名・所在地・問い合わせ方法をまとめてください。商品ページすべてに重ねて掲載する必要はありません。'],
+  author:['記事の執筆・確認担当','専門的な解説記事には、執筆者や確認担当者と、その人の経験・担当分野を明記してください。'],
+  evidence:['実績や説明を裏付ける情報','商品やサービスの特徴を説明する箇所に、確認できる実績・具体例・調査結果を加えてください。数値を載せる場合は、対象と時期も併記します。'],
+  primary:['自社だから出せる情報','開発の工夫、実際の利用例、担当者の説明など、自社で確認できる情報を追加してください。実績や数値を推測で作らないようにします。'],
+  sourceLink:['説明の出典','外部の調査や資料を根拠に説明している箇所には、参照した資料名とリンクを付けてください。外部の主張を使っていないページへの一律追加は不要です。'],
+  conditions:['適用条件の説明','商品・サービスの説明や回答の近くに、対象、利用条件、除外事項を記載してください。説明だけが切り出されても誤解されないようにします。'],
+  answer:['要点を先に伝える文章','最初に答えや要点を書き、その後に理由、条件、具体例を続けてください。比較は表、手順は番号付きの一覧にすると読み取りやすくなります。'],
+  rewrite:['本文の見直し','主な商品やサービスの説明を選び、「要点→理由→条件」の順に並べ直してください。実際の原文を使った下書きは、改善プレビューで確認できます。'],
+  visibility:['改善後の確認','ヒット測定で同じ質問を使い、実際のAI回答に会社名やサイトが出るかを記録してください。今回のページ診断では引用実績は未測定です。'],
+  directory:['ページの分類','商品、サービス、質問などのページを分類し、同じ内容のページが重複していないか確認してください。'],
+  cluster:['関連情報のつながり','中心となる説明ページから、選び方・使い方・よくある質問へ案内するリンクを付けてください。'],
+  crawler:['ページ取得の設定','制作担当者に、公開ページを外部から取得できる設定か確認してもらってください。'],
+  performance:['表示速度','表示速度は今回測定していません。実際の端末や速度測定ツールで確認してください。']
+ };
+ const [label,how]=map[id]||['掲載情報の確認','掲載内容と実際の事実が一致するかを担当者が確認してください。'];
+ return {label,how};
+}
+export function formatRecommendation(check){
+ const advice=plainAdvice(check.id);
+ if(check.state==='unknown')return `確認待ち：${advice.label}。${check.id==='jsonld'||check.id==='html'||check.id==='entity'?'元のHTMLを確認できていないため、不足とは判定していません。':''}${advice.how}`;
+ const target=check.pages?.find(p=>p.state==='not_observed');
+ return `${advice.label}：${advice.how}${check.checked>1?`（この確認に適した${check.checked}ページのうち、${check.checked-check.matched}ページで記載・設定を確認できませんでした）`:''}${target?`\n対象ページ：\n${target.url}\n`:''}`;
 }
 
 export function buildQuestionPlan(docs=[]){
@@ -149,8 +196,8 @@ export function enrichPageResults(pages=[],audit){
  return pages.map(page=>{
   const missing=checks.filter(x=>x.pages?.some(p=>p.url===page.url&&p.state==='not_observed')).sort((a,b)=>b.priority-a.priority);
   const unknown=checks.filter(x=>x.pages?.some(p=>p.url===page.url&&p.state==='unknown'));
-  const issues=missing.slice(0,4).map(x=>`${x.title}：取得した文書では未検出。${x.advice}`);
-  if(unknown.length)issues.push(`未測定・要確認：${unknown.slice(0,3).map(x=>x.title).join('、')}。未取得の情報を不足と断定していません。`);
+  const issues=missing.slice(0,4).map(x=>`${plainAdvice(x.id).label}：${plainAdvice(x.id).how}`);
+  if(unknown.length)issues.push(`未測定・要確認：${unknown.slice(0,2).map(x=>plainAdvice(x.id).label).join('、')}。取得できなかった情報は、不足とは判定していません。`);
   return {...page,issues:issues.length?issues:(page.issues||[])};
  });
 }

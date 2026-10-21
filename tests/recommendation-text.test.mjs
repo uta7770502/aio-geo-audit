@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const source=readFileSync(new URL('../app/recommendation-text.js',import.meta.url),'utf8');
+const {splitRecommendation}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const original='対象：https://www.boulmich.co.jp/。組織の設定を確認する。';
+const parts=splitRecommendation(original);
+assert.deepEqual(parts.filter(x=>x.url).map(x=>x.url),['https://www.boulmich.co.jp/']);
+assert.equal(parts.map(x=>x.text).join(''),original);
+const text='対象ページ：\nhttps://www.boulmich.co.jp/faq/\n配送の回答を修正してください。';
+assert.deepEqual(splitRecommendation(text).filter(x=>x.url).map(x=>x.url),['https://www.boulmich.co.jp/faq/']);
+assert.ok(!splitRecommendation('javascript:alert(1)').some(x=>x.url));
+assert.ok(!splitRecommendation('https://user:password@example.com/').some(x=>x.url));
+console.log('recommendation link checks passed');

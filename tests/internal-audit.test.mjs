@@ -35,16 +35,16 @@ assert.equal(buildInternalAudit([{internalEvidence:rich}]).supplemental.length,7
 assert.equal(buildInternalAudit([{internalEvidence:rich}]).measurementPlan.state,'unmeasured');
 assert.ok(buildInternalAudit([]).supplemental.every(x=>x.state==='unknown'));
 const old={url,native:true,signals:{},jsonld:null,links:null};
-assert.ok(buildInternalAudit([{internalEvidence:old}]).supplemental.every(x=>x.state==='unknown'));
+assert.ok(buildInternalAudit([{internalEvidence:old}]).supplemental.every(x=>['unknown','not_applicable'].includes(x.state)));
 const original={entity:{score:61,findings:['旧評価']},schema:{score:25,findings:['旧評価']},citation:{score:30,findings:['旧評価']}};
 const adapted=applyAuditKnowledge(original,fallback);
 assert.equal(adapted.categories.entity.score,61);
 assert.equal(adapted.categories.schema.score,25);
-assert.ok(adapted.categories.schema.findings.some(x=>x.includes('未測定')));
+assert.ok(adapted.categories.schema.findings.some(x=>x.includes('確認待ち')));
 assert.ok(!adapted.categories.schema.findings.some(x=>x.includes('検出しました')));
-assert.ok(adapted.categories.citation.findings.some(x=>x.includes('未測定')));
+assert.ok(adapted.categories.citation.findings.some(x=>x.includes('確認待ち')));
 assert.equal(original.entity.findings[0],'旧評価');
-assert.ok(adapted.actions.some(x=>x.includes('要確認（未測定）')));
+assert.ok(adapted.actions.every(x=>!x.includes('機械可読')));
 assert.ok(Object.values(adapted.categories).every(x=>x.findings.length<=3));
 assert.deepEqual(Object.keys(adapted.categories),Object.keys(original));
 const second=inspectDocument({url:url+'service/missing',html:'<h1>業務支援サービス</h1><p>対象企業の業務を支援しています。</p>',text:'対象企業の業務を支援しています。'});
@@ -52,9 +52,9 @@ const mixed=buildInternalAudit([{internalEvidence:rich},{internalEvidence:second
 assert.equal(mixed.items.find(x=>x.id==='html').state,'partial');
 const detailed=applyAuditKnowledge({structure:{score:60},entity:{score:50}},mixed);
 assert.ok(detailed.categories.structure.findings.some(x=>x.includes(second.url)));
-assert.ok(detailed.categories.structure.findings.some(x=>x.includes('補足候補')));
+assert.ok(detailed.categories.structure.findings.some(x=>x.includes('関連する商品')));
 const enriched=enrichPageResults([{url:second.url,score:60}],mixed);
-assert.ok(enriched[0].issues.some(x=>x.includes('未検出')));
+assert.ok(enriched[0].issues.some(x=>x.includes('見出し')));
 assert.equal(enriched[0].score,60);
 assert.ok(mixed.planning.questions.some(x=>x.includes('業務支援サービス')));
 assert.equal(mixed.planning.measured,false);
@@ -69,4 +69,18 @@ const markdown=inspectDocument({url,text:'![](https://example.com/logo.svg)\n\n[
 assert.ok(!markdown.details.excerpt.includes('logo.svg'));
 assert.ok(markdown.details.excerpt.includes('当社は物流サービス'));
 assert.ok(!buildRewriteDraft('![](https://example.com/logo.svg)\n\n当社は物流サービスを提供しています。').includes('logo.svg'));
+const bakeryPages=[
+ {url:'https://www.boulmich.co.jp/',html:'<title>洋菓子ブランド</title><p>クリスマスギフト特集を更新いたしました。</p>',text:'クリスマスギフト特集を更新いたしました。'},
+ ...Array.from({length:23},(_,i)=>({url:`https://www.boulmich.co.jp/faq/${i}`,html:'<title>FAQ｜洋菓子ブランド</title><h1>よくある質問</h1>',text:'FAQ よくある質問'}))
+];
+const bakeryAudit=buildInternalAudit(bakeryPages);
+assert.equal(bakeryAudit.items.find(x=>x.id==='entity').checked,1);
+assert.equal(bakeryAudit.supplemental.find(x=>x.id==='definition').checked,1);
+assert.ok(bakeryAudit.supplemental.find(x=>x.id==='definition').pages.filter(x=>x.state==='not_observed').every(x=>!x.url.includes('/faq/')));
+const bakeryCopy=applyAuditKnowledge({entity:{score:60},faq:{score:50}},bakeryAudit);
+assert.ok(!JSON.stringify(bakeryCopy).includes('クリスマス'));
+assert.ok(!JSON.stringify(bakeryCopy.categories.entity.findings).includes('/faq/'));
+assert.ok(!JSON.stringify(bakeryCopy).includes('機械可読'));
+assert.ok(bakeryCopy.categories.entity.findings.some(x=>x.includes('制作担当者')));
+assert.ok(bakeryCopy.categories.entity.findings.some(x=>x.includes('\nhttps://www.boulmich.co.jp/\n')));
 console.log('internal audit checks passed');
