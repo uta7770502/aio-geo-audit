@@ -13,6 +13,8 @@ export function inspectDocument({html='',text='',url='',source='direct'}) {
  const canonicalTags=[...body.matchAll(/<link\b[^>]*>/gi)].map(m=>m[0]).filter(tag=>/\brel\s*=\s*["']canonical["']/i.test(tag));
  const canonicals=canonicalTags.map(tag=>{const href=tag.match(/\bhref\s*=\s*["']([^"']+)["']/i)?.[1];try{const u=new URL(href||'',url);return href&&/^https?:$/.test(u.protocol)?u.href:null;}catch{return null;}}).filter(Boolean);
  const headingLevels=[...body.matchAll(/<h([1-6])\b/gi)].map(m=>Number(m[1]));
+ const headingsText=native?[...body.matchAll(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/gi)].map(m=>strip(m[1])).filter(Boolean).slice(0,8):[...String(text).matchAll(/^#{1,2}\s+(.+)$/gm)].map(m=>m[1].trim()).slice(0,8);
+ const title=strip(html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1]||'');
  const headingJump=headingLevels.some((level,i)=>i>0&&level>headingLevels[i-1]+1);
  const primaryKinds=[['survey',/自社調査|当社調査|アンケート/],['expert',/専門家|監修|考察/],['experiment',/実験|検証結果|テスト結果/],['case',/導入事例|事例紹介|ケーススタディ/]].filter(([,re])=>re.test(visible)).map(([key])=>key);
  const path=(()=>{try{return new URL(url).pathname;}catch{return '';}})();
@@ -42,7 +44,7 @@ export function inspectDocument({html='',text='',url='',source='direct'}) {
   sourceLink:native?externalSources.length>0:null,
   conditions:/対象|条件|前提|調査期間|集計期間|除外|適用範囲/.test(visible),
   primary:primaryKinds.length>0
- },details:{definitionExamples:definitions.slice(0,2).map(p=>p.slice(0,180)),externalSources:[...new Set(externalSources)].slice(0,5),canonicals,primaryKinds,pageKind},jsonld:native?{scripts:scripts.length,invalid,types,organizations}:null,links:native?[...new Set(links)]:null};
+ },details:{title,headingsText,excerpt:paragraphs.find(p=>p.length>=20)?.slice(0,240)||visible.slice(0,240),definitionExamples:definitions.slice(0,2).map(p=>p.slice(0,180)),externalSources:[...new Set(externalSources)].slice(0,5),canonicals,primaryKinds,pageKind},jsonld:native?{scripts:scripts.length,invalid,types,organizations}:null,links:native?[...new Set(links)]:null};
 }
 
 export function buildInternalAudit(documents=[]) {
@@ -51,8 +53,9 @@ export function buildInternalAudit(documents=[]) {
  const add=(id,group,title,signal,advice,impact=2,effort=2)=>{
   const eligible=signal?docs.filter(d=>signal(d)!==null&&signal(d)!==undefined):[];
   const hits=eligible.filter(d=>signal(d));
-  const state=!eligible.length?'unknown':hits.length?'observed':'not_observed';
-  rows.push({id,group,title,state,method:eligible.length?'document_signal':'manual_review',checked:eligible.length,matched:hits.length,evidence:hits.slice(0,5).map(d=>d.url),advice,impact,effort,priority:state==='not_observed'?impact*3-effort:state==='unknown'?1:0});
+  const state=!eligible.length?'unknown':hits.length===eligible.length?'observed':hits.length?'partial':'not_observed';
+  const pages=docs.map(d=>({url:d.url,state:!signal||signal(d)==null?'unknown':signal(d)?'observed':'not_observed',excerpt:d.details?.excerpt||''}));
+  rows.push({id,group,title,state,method:eligible.length?'document_signal':'manual_review',checked:eligible.length,matched:hits.length,evidence:hits.slice(0,5).map(d=>d.url),pages,advice,impact,effort,priority:['not_observed','partial'].includes(state)?impact*3-effort:state==='unknown'?1:0});
  };
  const s=k=>d=>d.signals[k];
  add('fanout','コンテンツ','質問を複数の意図へ分解',null,'顧客の中心的な質問から、意味・比較・費用・導入条件・検証方法の質問候補を作り、実際のAI回答とは分けて管理する。');
@@ -86,8 +89,9 @@ export function buildInternalAudit(documents=[]) {
  add('conditions','根拠','対象や適用条件の説明',signal('conditions'),'対象範囲・前提・期間・除外条件を主張と一緒に記載し、切り出した際にも誤解を防ぐ。',3,1);
  add('primary','根拠','調査・見解・検証・事例の記載',signal('primary'),'自社調査、専門的見解、検証、事例を事実確認して掲載する。関連語の検出だけでは独自性や一次情報であることを判定しない。',3,2);
  const supplemental=rows;
+ const planning=buildQuestionPlan(docs);
  const priorities=[...items,...supplemental].filter(x=>x.state!=='observed').sort((a,b)=>b.priority-a.priority);
- return {version:2,scope:'取得できた代表ページのみ。未検出はサイト全体での不存在を意味しません。検出は品質・正確性・AI引用の保証ではありません。',items,supplemental,priorities,jsonld:docs.filter(d=>d.jsonld).map(d=>({url:d.url,...d.jsonld})),pageGuidance:docs.filter(d=>d.details).map(d=>({url:d.url,...d.details,instruction:d.details.pageKind==='corporate'?'運営主体・事業領域・沿革・実績の関係を明確にし、公式名称と定義を揃える。':d.details.pageKind==='service'?'対象顧客の課題、解決内容、比較条件、費用、根拠を同じ文脈で説明する。':'URLから用途を分類できません。企業紹介かサービス説明かを担当者が選び、ページの目的を明確にする。'})),measurementPlan:{state:'unmeasured',note:'以下は計測計画です。HTML診断からブランド想起・流入・商談成果は算出していません。',metrics:[{name:'AIの言及・引用',method:'質問セット・モデル・実行日時を固定して既存ヒット測定で回答と出典を記録する。'},{name:'AI経由の流入',method:'GA4等で参照元・期間・計測条件を定義する。解析アカウントとの連携は未実装。'},{name:'問い合わせ・商談',method:'イベントと成約の定義を担当者と決める。流入元との関連付けと成果計測は未実装。'}],review:'実装前の基準値と改修履歴を保存し、同じ条件で再確認する。CMS・テンプレート・権限・担当者を決めてから改修する。'},planning:{measured:false,questions:['どのようなサービスか','他の選択肢と何が違うか','費用と契約条件は何か','導入までに何が必要か','成果をどう検証できるか'],instruction:'質問候補のひな型です。実際のAIサブクエリは未観測です。中心ページ→各質問の解説→根拠や事例を対応付けてください。'}};
+ return {version:2,scope:'取得できた代表ページのみ。未検出はサイト全体での不存在を意味しません。検出は品質・正確性・AI引用の保証ではありません。',items,supplemental,priorities,jsonld:docs.filter(d=>d.jsonld).map(d=>({url:d.url,...d.jsonld})),pageGuidance:docs.filter(d=>d.details).map(d=>({url:d.url,...d.details,instruction:d.details.pageKind==='corporate'?'運営主体・事業領域・沿革・実績の関係を明確にし、公式名称と定義を揃える。':d.details.pageKind==='service'?'対象顧客の課題、解決内容、比較条件、費用、根拠を同じ文脈で説明する。':'URLから用途を分類できません。企業紹介かサービス説明かを担当者が選び、ページの目的を明確にする。'})),measurementPlan:{state:'unmeasured',note:'以下は計測計画です。HTML診断からブランド想起・流入・商談成果は算出していません。',metrics:[{name:'AIの言及・引用',method:'質問セット・モデル・実行日時を固定して既存ヒット測定で回答と出典を記録する。'},{name:'AI経由の流入',method:'GA4等で参照元・期間・計測条件を定義する。解析アカウントとの連携は未実装。'},{name:'問い合わせ・商談',method:'イベントと成約の定義を担当者と決める。流入元との関連付けと成果計測は未実装。'}],review:'実装前の基準値と改修履歴を保存し、同じ条件で再確認する。CMS・テンプレート・権限・担当者を決めてから改修する。'},planning};
 }
 
 // Fit the research-derived checks into the original six cards and action list.
@@ -104,19 +108,54 @@ export function applyAuditKnowledge(categories={},audit){
  const categoryEntries=Object.entries(categories).map(([key,value])=>{
   const rows=(groups[key]||[]).map(id=>checks.find(x=>x.id===id)).filter(Boolean);
   if(!rows.length)return [key,value];
-  const pending=rows.filter(x=>x.state==='not_observed').sort((a,b)=>b.priority-a.priority);
+  const pending=rows.filter(x=>['not_observed','partial'].includes(x.state)).sort((a,b)=>b.priority-a.priority);
   const manual=rows.filter(x=>x.state==='unknown');
   const observed=rows.filter(x=>x.state==='observed');
-  const findings=pending.slice(0,2).map(x=>`取得${x.checked}ページでは「${x.title}」の手掛かりを検出できませんでした。${x.advice}`);
+  const findings=pending.slice(0,2).map(x=>{
+   const target=x.pages?.find(p=>p.state==='not_observed');
+   return `「${x.title}」は確認${x.checked}ページ中${x.checked-x.matched}ページで未検出。${target?`対象：${target.url}。`:''}${x.advice}${target?.excerpt?` 確認した本文の一部：「${target.excerpt.slice(0,90)}」。未検出はこの記述の誤りを意味しません。`:''}`;
+  });
   if(!findings.length&&observed.length){const x=observed[0];findings.push(`「${x.title}」の手掛かりを${x.matched}/${x.checked}ページで検出しました。品質や正確性の確認は別途必要です。${x.advice}`);}
-  if(manual.length){const x=manual[0];findings.push(`未測定・要確認：${x.title}。${x.advice}`);}
-  else findings.push('取得できた代表ページ内の確認です。サイト全体での有無やAIによる引用実績を示すものではありません。');
+  if(manual.length){const x=manual[0];findings.push(`未測定・要確認：${x.title}。${x.advice}${x.id==='fanout'&&audit.planning?.topic?` 質問候補：「${audit.planning.questions[0]}」など。実際のAI検索経路は未観測です。`:''}`);}
+  if(key==='structure'&&audit.planning?.cluster?.hub){const clusterNote=`ページ構成の候補：中心 ${audit.planning.cluster.hub}、補足候補${audit.planning.cluster.spokes.length}ページ。${audit.planning.cluster.note}`; if(findings.length>=3)findings[2]+=' '+clusterNote;else findings.push(clusterNote);}
+  else if(!manual.length) findings.push('取得できた代表ページ内の確認です。サイト全体での有無やAIによる引用実績を示すものではありません。');
   return [key,{...value,findings:findings.slice(0,3)}];
  });
  const ordered=audit?.priorities||[];
- const detected=ordered.filter(x=>x.state==='not_observed');
+ const detected=ordered.filter(x=>['not_observed','partial'].includes(x.state));
  const manual=ordered.filter(x=>x.state==='unknown');
  const selected=[...detected.slice(0,3),...(manual.length?[manual.find(x=>x.id==='fanout')||manual[0]]:[])];
- const actions=selected.length?selected.map(x=>`${x.state==='unknown'?'要確認（未測定）':'取得範囲で未検出'}：${x.advice}`):['検出済みの記載と画面・実際の事実との一致を確認し、同じ条件で継続診断する'];
+ const actions=selected.length?selected.map(x=>`${x.state==='unknown'?'要確認（未測定）':'取得範囲で未検出'}：${x.pages?.find(p=>p.state==='not_observed')?.url||''} ${x.advice}${x.state==='unknown'?'':`（影響度の目安${x.impact}/3・工数の目安${x.effort}/3。引用効果の予測値ではありません）`}`):['検出済みの記載と画面・実際の事実との一致を確認し、同じ条件で継続診断する'];
  return {categories:Object.fromEntries(categoryEntries),actions,notice:'スコアは取得文書の参考評価です。AIでの順位・引用率・流入、速度や社内運用の実測値ではありません。'};
+}
+
+export function buildQuestionPlan(docs=[]){
+ const useful=s=>typeof s==='string'&&s.length>=2&&s.length<=60&&!/^(ホーム|TOP|HOME|会社概要|企業情報|お問い合わせ|サービス|事業内容|概要|条件|特徴|料金|詳細|ご案内|メニュー)$/i.test(s)&&!/^https?:/i.test(s);
+ const ranked=[...docs].sort((a,b)=>(b.details?.pageKind==='service'?1:0)-(a.details?.pageKind==='service'?1:0));
+ const candidates=ranked.flatMap(d=>(d.details?.headingsText||[]).map(topic=>({topic,url:d.url})));
+ const selected=candidates.find(x=>useful(x.topic))||ranked.map(d=>({topic:d.details?.title?.split(/[｜|]/)[0]?.trim(),url:d.url})).find(x=>useful(x.topic));
+ const topic=selected?.topic||'対象サービス';
+ const questions=[`${topic}とは何か、どんな課題に対応するか？`,`${topic}を他の選択肢と比較する基準は？`,`${topic}の費用と適用条件は？`,`${topic}の導入手順と必要な準備は？`,`${topic}の実績や成果を確認できる根拠は？`];
+ const linkable=ranked.filter(d=>d.links!==null&&Array.isArray(d.links));
+ return {measured:false,topic:topic==='対象サービス'?null:topic,sourceUrl:selected?.url||null,questions,instruction:'取得した見出し・題名から作った編集用候補です。実際のAIサブクエリや検索需要は未測定です。',cluster:{hub:selected?.url||null,spokes:ranked.filter(d=>d.url!==selected?.url).slice(0,5).map(d=>({url:d.url,title:d.details?.title||d.url,linkedFromHub:linkable.find(p=>p.url===selected?.url)?.links.includes(d.url)??null})),note:'中心・補足ページの候補です。リンク有無のみ確認し、話題の関連性は手動確認が必要です。'}};
+}
+
+export function enrichPageResults(pages=[],audit){
+ const checks=[...(audit?.items||[]),...(audit?.supplemental||[])];
+ return pages.map(page=>{
+  const missing=checks.filter(x=>x.pages?.some(p=>p.url===page.url&&p.state==='not_observed')).sort((a,b)=>b.priority-a.priority);
+  const unknown=checks.filter(x=>x.pages?.some(p=>p.url===page.url&&p.state==='unknown'));
+  const issues=missing.slice(0,4).map(x=>`${x.title}：取得した文書では未検出。${x.advice}`);
+  if(unknown.length)issues.push(`未測定・要確認：${unknown.slice(0,3).map(x=>x.title).join('、')}。未取得の情報を不足と断定していません。`);
+  return {...page,issues:issues.length?issues:(page.issues||[])};
+ });
+}
+
+export function buildRewriteDraft(text='',kind='service'){
+ const sentences=String(text).replace(/\s+/g,' ').trim().split(/(?<=[。！？!?])/).map(s=>s.trim()).filter(s=>s.length>=6&&s.length<=350&&!/^https?:/i.test(s));
+ const match={company:/会社|事業|企業|提供/,service:/提供|サービス|対応|支援|製品/,proof:/実績|事例|調査|結果|導入/,faq:/料金|費用|期間|条件|対応|方法/}[kind]||/サービス|提供/;
+ const first=sentences.find(s=>match.test(s))||sentences[0];
+ if(!first)return '編集案（未完成）：取得文に十分な説明文がありません。「対象・提供内容・根拠・適用条件」を担当者が事実確認して記入してください。';
+ const second=sentences.find(s=>s!==first&&/実績|事例|調査|条件|対象|対応|\d/.test(s));
+ return `冒頭に置く候補（原文）：${first}${second?`\n補足に置く候補（原文）：${second}`:''}\n編集時の確認：対象・根拠・適用条件を確認し、不明な事実は補わず追記してください。原文の並べ替え案であり、内容の正確性やAI引用効果は未検証です。`;
 }
