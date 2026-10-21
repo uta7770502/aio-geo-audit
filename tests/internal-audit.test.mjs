@@ -19,5 +19,22 @@ const fallback=buildInternalAudit([{internalEvidence:inspectDocument({text:'Orga
 for(const id of ['jsonld','html','links','entity'])assert.equal(fallback.items.find(x=>x.id===id).state,'unknown');
 assert.ok(buildInternalAudit([]).items.every(x=>x.state==='unknown'));
 assert.equal(audit.planning.measured,false);
+const rich=inspectDocument({url:url+'service/',html:'<link href="/service/" rel="canonical"><main><section><h1>概要</h1><h2>条件</h2><p>サンプルとは、企業の情報発信を支援するサービスです。</p><a href="https://research.example.org/report">調査の出典</a></section></main>',text:'当社調査の対象は利用者です。調査期間2026年。'});
+assert.equal(rich.signals.definition,true);
+assert.equal(rich.signals.semantic,true);
+assert.equal(rich.signals.canonical,true);
+assert.equal(rich.signals.sourceLink,true);
+assert.deepEqual(rich.details.primaryKinds,['survey']);
+assert.equal(rich.details.pageKind,'service');
+assert.equal(inspectDocument({url,html:'<h1>概要</h1><h3>詳細</h3>',text:'とは とは とは'}).signals.definition,false);
+assert.equal(inspectDocument({url,html:'<h1>概要</h1><h3>詳細</h3>'}).signals.hierarchy,false);
+assert.equal(inspectDocument({url,html:'<link rel="canonical" href="javascript:alert(1)">'}).signals.canonical,false);
+assert.equal(inspectDocument({url,html:'<link rel="canonical" href="/a"><link rel="canonical" href="/b">'}).signals.canonical,false);
+assert.equal(inspectDocument({url,text:'当社のサービスです',source:'firecrawl'}).signals.semantic,null);
+assert.equal(buildInternalAudit([{internalEvidence:rich}]).supplemental.length,7);
+assert.equal(buildInternalAudit([{internalEvidence:rich}]).measurementPlan.state,'unmeasured');
+assert.ok(buildInternalAudit([]).supplemental.every(x=>x.state==='unknown'));
+const old={url,native:true,signals:{},jsonld:null,links:null};
+assert.ok(buildInternalAudit([{internalEvidence:old}]).supplemental.every(x=>x.state==='unknown'));
 console.log('internal audit checks passed');
 

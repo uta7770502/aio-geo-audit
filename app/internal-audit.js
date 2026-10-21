@@ -2,6 +2,21 @@
 export function inspectDocument({html='',text='',url='',source='direct'}) {
  const native=source==='direct'&&Boolean(html);
  const visible=String(text).replace(/\s+/g,' ').trim();
+ const strip=value=>value.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+ const body=html.replace(/<script\b[\s\S]*?<\/script>/gi,' ').replace(/<style\b[\s\S]*?<\/style>/gi,' ');
+ const paragraphs=native?[...body.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)].map(m=>strip(m[1])):String(text).split(/\n\s*\n/).map(strip);
+ const definitions=paragraphs.filter(p=>p.length>=12&&p.length<=260&&/(?:とは|は、).{4,180}(?:です|指します|いいます|である|提供します)[。.]?/.test(p));
+ const externalSources=[];
+ for(const m of body.matchAll(/<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)){
+  try{const u=new URL(m[1],url);if(/^https?:$/.test(u.protocol)&&u.origin!==new URL(url).origin&&/出典|参照|調査|研究|報告|source|reference/i.test(strip(m[2])))externalSources.push(u.href);}catch{}
+ }
+ const canonicalTags=[...body.matchAll(/<link\b[^>]*>/gi)].map(m=>m[0]).filter(tag=>/\brel\s*=\s*["']canonical["']/i.test(tag));
+ const canonicals=canonicalTags.map(tag=>{const href=tag.match(/\bhref\s*=\s*["']([^"']+)["']/i)?.[1];try{const u=new URL(href||'',url);return href&&/^https?:$/.test(u.protocol)?u.href:null;}catch{return null;}}).filter(Boolean);
+ const headingLevels=[...body.matchAll(/<h([1-6])\b/gi)].map(m=>Number(m[1]));
+ const headingJump=headingLevels.some((level,i)=>i>0&&level>headingLevels[i-1]+1);
+ const primaryKinds=[['survey',/自社調査|当社調査|アンケート/],['expert',/専門家|監修|考察/],['experiment',/実験|検証結果|テスト結果/],['case',/導入事例|事例紹介|ケーススタディ/]].filter(([,re])=>re.test(visible)).map(([key])=>key);
+ const path=(()=>{try{return new URL(url).pathname;}catch{return '';}})();
+ const pageKind=/\/(?:company|about|corporate|profile)(?:\/|$)/i.test(path)?'corporate':/\/(?:service|product|solution)(?:\/|$)/i.test(path)?'service':'unclassified';
  const scripts=[...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)].filter(m=>/\btype\s*=\s*["']application\/ld\+json["']/i.test(m[1]));
  const nodes=[];let invalid=0;
  function walk(v){if(Array.isArray(v))v.forEach(walk);else if(v&&typeof v==='object'){if(v['@type'])nodes.push(v);if(v['@graph'])walk(v['@graph']);}}
@@ -19,15 +34,22 @@ export function inspectDocument({html='',text='',url='',source='direct'}) {
   author:/著者|執筆|監修|プロフィール/.test(visible),
   contact:/所在地|住所/.test(visible)&&/電話|お問い合わせ|連絡先/.test(visible),
   updated:/更新日|最終更新|dateModified/i.test(visible),
-  service:/サービス|事業|提供|製品/.test(visible)
- },jsonld:native?{scripts:scripts.length,invalid,types,organizations}:null,links:native?[...new Set(links)]:null};
+  service:/サービス|事業|提供|製品/.test(visible),
+  definition:definitions.length>0,
+  semantic:native?/<main\b/i.test(body)&&/<(?:article|section)\b/i.test(body):null,
+  hierarchy:native?headingLevels.length>0&&!headingJump:null,
+  canonical:native?canonicalTags.length===1&&canonicals.length===1:null,
+  sourceLink:native?externalSources.length>0:null,
+  conditions:/対象|条件|前提|調査期間|集計期間|除外|適用範囲/.test(visible),
+  primary:primaryKinds.length>0
+ },details:{definitionExamples:definitions.slice(0,2).map(p=>p.slice(0,180)),externalSources:[...new Set(externalSources)].slice(0,5),canonicals,primaryKinds,pageKind},jsonld:native?{scripts:scripts.length,invalid,types,organizations}:null,links:native?[...new Set(links)]:null};
 }
 
 export function buildInternalAudit(documents=[]) {
  const docs=documents.map(d=>d.internalEvidence||inspectDocument(d));
- const rows=[];
+ let rows=[];
  const add=(id,group,title,signal,advice,impact=2,effort=2)=>{
-  const eligible=signal?docs.filter(d=>signal(d)!==null):[];
+  const eligible=signal?docs.filter(d=>signal(d)!==null&&signal(d)!==undefined):[];
   const hits=eligible.filter(d=>signal(d));
   const state=!eligible.length?'unknown':hits.length?'observed':'not_observed';
   rows.push({id,group,title,state,method:eligible.length?'document_signal':'manual_review',checked:eligible.length,matched:hits.length,evidence:hits.slice(0,5).map(d=>d.url),advice,impact,effort,priority:state==='not_observed'?impact*3-effort:state==='unknown'?1:0});
@@ -53,6 +75,18 @@ export function buildInternalAudit(documents=[]) {
  add('priority','運用','改善順序と担当の合意',null,'下記の改善候補を影響・工数の目安で並べ、事業上の重要度と担当者を決める。');
  add('ownership','運用','更新担当と確認基準',null,'編集・技術・計測の担当者と確認周期を決める。');
  add('review','運用','修正後の再確認と知識共有',null,'修正履歴と再診断結果を残し、判断基準を共有する。');
- return {version:1,scope:'取得できた代表ページのみ。未検出はサイト全体での不存在を意味しません。検出は品質・正確性・AI引用の保証ではありません。',items:rows,priorities:rows.filter(x=>x.state!=='observed').sort((a,b)=>b.priority-a.priority),jsonld:docs.filter(d=>d.jsonld).map(d=>({url:d.url,...d.jsonld})),planning:{measured:false,questions:['どのようなサービスか','他の選択肢と何が違うか','費用と契約条件は何か','導入までに何が必要か','成果をどう検証できるか'],instruction:'質問候補のひな型です。実際のAIサブクエリは未観測です。中心ページ→各質問の解説→根拠や事例を対応付けてください。'}};
+ const items=rows;
+ rows=[];
+ const signal=k=>d=>d.signals?.[k];
+ add('definition','意味・文脈','用語やサービスの短い定義',signal('definition'),'名称を列挙するだけでなく、対象・意味・提供範囲を短い段落で説明する。語句の検出は定義の正確さを保証しない。',3,1);
+ add('semantic','公開HTML','本文の領域を表すHTML',signal('semantic'),'main・article・sectionなどを内容の役割に合わせて選ぶ。タグの存在だけで適切な構造とは断定できない。');
+ add('hierarchy','公開HTML','見出しレベルの飛び越し',signal('hierarchy'),'見出しを主題から詳細へ段階的に配置する。内容の連続性や意味的な妥当性は編集者が確認する。',2,1);
+ add('canonical','公開HTML','代表URLを示す指定',signal('canonical'),'canonicalを1件、解決可能なHTTP(S)形式で指定する。代表URLの妥当性・インデックス登録・検索エンジンによる採用は未確認。',2,1);
+ add('sourceLink','根拠','出典と分かる外部参照リンク',signal('sourceLink'),'数値や主張の近くに出典・調査条件を示す。リンクの存在と出典の信頼性・到達可否は別途検証する。',3,1);
+ add('conditions','根拠','対象や適用条件の説明',signal('conditions'),'対象範囲・前提・期間・除外条件を主張と一緒に記載し、切り出した際にも誤解を防ぐ。',3,1);
+ add('primary','根拠','調査・見解・検証・事例の記載',signal('primary'),'自社調査、専門的見解、検証、事例を事実確認して掲載する。関連語の検出だけでは独自性や一次情報であることを判定しない。',3,2);
+ const supplemental=rows;
+ const priorities=[...items,...supplemental].filter(x=>x.state!=='observed').sort((a,b)=>b.priority-a.priority);
+ return {version:2,scope:'取得できた代表ページのみ。未検出はサイト全体での不存在を意味しません。検出は品質・正確性・AI引用の保証ではありません。',items,supplemental,priorities,jsonld:docs.filter(d=>d.jsonld).map(d=>({url:d.url,...d.jsonld})),pageGuidance:docs.filter(d=>d.details).map(d=>({url:d.url,...d.details,instruction:d.details.pageKind==='corporate'?'運営主体・事業領域・沿革・実績の関係を明確にし、公式名称と定義を揃える。':d.details.pageKind==='service'?'対象顧客の課題、解決内容、比較条件、費用、根拠を同じ文脈で説明する。':'URLから用途を分類できません。企業紹介かサービス説明かを担当者が選び、ページの目的を明確にする。'})),measurementPlan:{state:'unmeasured',note:'以下は計測計画です。HTML診断からブランド想起・流入・商談成果は算出していません。',metrics:[{name:'AIの言及・引用',method:'質問セット・モデル・実行日時を固定して既存ヒット測定で回答と出典を記録する。'},{name:'AI経由の流入',method:'GA4等で参照元・期間・計測条件を定義する。解析アカウントとの連携は未実装。'},{name:'問い合わせ・商談',method:'イベントと成約の定義を担当者と決める。流入元との関連付けと成果計測は未実装。'}],review:'実装前の基準値と改修履歴を保存し、同じ条件で再確認する。CMS・テンプレート・権限・担当者を決めてから改修する。'},planning:{measured:false,questions:['どのようなサービスか','他の選択肢と何が違うか','費用と契約条件は何か','導入までに何が必要か','成果をどう検証できるか'],instruction:'質問候補のひな型です。実際のAIサブクエリは未観測です。中心ページ→各質問の解説→根拠や事例を対応付けてください。'}};
 }
 
